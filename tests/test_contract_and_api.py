@@ -1,6 +1,7 @@
 """Canonical contract, the CSV client adapter, and the HTTP API."""
 
 import shutil
+import sqlite3
 
 import pandas as pd
 import pytest
@@ -59,6 +60,9 @@ def client(tmp_path, monkeypatch):
         pytest.skip("run `make demo` first: no database")
     db = tmp_path / "planner.sqlite"
     shutil.copy(ROOT / "data" / "planner.sqlite", db)
+    with sqlite3.connect(db) as conn:  # decisions recorded in the app must not leak into the test
+        conn.execute("DELETE FROM recommendation_overrides")
+        conn.execute("UPDATE plan_recommendations SET status = 'OPEN'")
     monkeypatch.setenv("QSTATS_DATABASE_URL", f"sqlite:///{db}")
     from fastapi.testclient import TestClient
 
@@ -98,5 +102,6 @@ def test_api_decisions_are_audited(client):
     assert body["system_quantity"] == qty and body["override_quantity"] == qty + 24 and body["planner_action"] == "OVERRIDE"
     assert client.post(f"/recommendations/{rid}/override", json={"comment": "no quantity"}).status_code == 422
     assert client.post("/recommendations/REC-NOPE/accept").status_code == 404
-    assert client.get(f"/recommendations/{rec['sku']}").json()[0]["status"] in ("OVERRIDDEN", "OPEN")
+    row = next(r for r in client.get(f"/recommendations/{rec['sku']}").json() if r["recommendation_id"] == rid)
+    assert row["status"] == "OVERRIDDEN"
     assert len(client.get("/decisions").json()) == 1

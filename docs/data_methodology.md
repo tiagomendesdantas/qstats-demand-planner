@@ -1,8 +1,10 @@
 # Data methodology
 
 What comes from the UCI file, what is transformed, what is simulated, and what the planner never
-sees. Every count below is produced by `scripts/prepare_transactions.py` and stored in
-`data/processed/manifest.json`.
+sees. The cleaning and calendar counts are produced by `scripts/prepare_transactions.py` and stored
+in `data/processed/manifest.json`; population counts come from `scripts/build_demo_population.py`
+(`data/processed/population.parquet`). The two large order-and-cancel pairs and the rejected
+broader wholesale rule were one-off queries on the same file and are marked as such.
 
 ## 1. Source
 
@@ -50,14 +52,14 @@ The two sheets overlap on 1–9 Dec 2010 (22,523 lines); the first sheet's invoi
 same customer, SKU and quantity (most recent earlier sale, one-to-one) marks that sale as
 cancelled: the order was never fulfilled demand, so it is removed on the day it was placed, not
 netted on the day of the return. This covers 400,719 of the 467,739 returned units, including two
-same-day order-and-cancel pairs of 74,215 and 80,995 units. Returns without a match stay returns on
+same-day order-and-cancel pairs of 74,215 and 80,995 units (one-off query). Returns without a match stay returns on
 their own day and do not reduce demand. Lines without a customer cannot be matched.
 
 **Wholesale lots.** A line more than 10× the SKU's own 95th-percentile line and at least 1,000
 units is flagged (159 lines, 448,020 units, 4.2% of non-cancelled sale units). It stays in the
 record and is left out of the demand the simulated business faces: a handful of such lines would
 decide every fill-rate metric. A broader rule (4× and 500 units) was rejected because it removed
-8.4% of units, much of it ordinary wholesale lumpiness.
+8.4% of units, much of it ordinary wholesale lumpiness (one-off query, not rerun).
 
 Fields kept per SKU-day: `gross_units_sold` (all sale lines), `returns`, `net_units`
 (gross − returns), and `units` (fulfilled demand: sales neither cancelled nor wholesale lots),
@@ -65,10 +67,11 @@ Fields kept per SKU-day: `gross_units_sold` (all sale lines), `returns`, `net_un
 
 ## 4. Calendar and lifecycle
 
-The retailer traded on 604 of 739 calendar days: no Saturdays, two twelve-day year-end shutdowns,
-shorter Easter gaps. A closed day is not a zero-demand day, so demand is modelled per trading day
-and weekly forecasts are multiplied by the number of trading days in the week. Future trading
-days follow the observed pattern (Saturdays closed, 23 Dec – 3 Jan shut).
+The retailer traded on 604 of 739 calendar days: no Saturdays (one exception, 9 Dec 2023 on the
+shifted calendar), two eleven-day year-end shutdowns (28 Dec – 7 Jan and 27 Dec – 6 Jan, shifted),
+and four-day Easter closures. A closed day is not a zero-demand day, so demand is modelled per
+trading day and weekly forecasts are multiplied by the number of trading days in the week. Future
+trading days follow the observed pattern (Saturdays closed, 27 Dec – 6 Jan shut).
 
 Every date is moved forward by exactly 731 weeks (weekdays and seasons preserved), so the history
 reads as 5 Dec 2023 – 12 Dec 2025. `calendar.shift_weeks: 0` turns this off.
@@ -101,9 +104,10 @@ over-represent rare profiles; within a profile, SKUs are drawn evenly from volum
 | SHORT_HISTORY | 14 | 9 |
 | INTERMITTENT | 7 | 4 |
 
-New products are drawn at random among SKUs launched in weeks 53–80, by launch date only. 36 demo
-SKUs stop selling during year two and stay in: carrying stock of a product that dies is a real
-cost. The dev population (120 SKUs, disjoint) is where every tuning decision was made.
+New products are drawn at random among SKUs launched in weeks 53–80, by launch date only. 44 demo
+SKUs stopped selling before the end of the data (no sale in its last eight weeks): 5 made their last
+sale before the fork and 14 before the scoring window began. They stay in: carrying stock of a
+product that dies is a real cost. The dev population (120 SKUs, disjoint) is where every tuning decision was made.
 `population.demo_sku_count` runs the pipeline on more SKUs.
 
 ## 6. The simulated business
@@ -114,14 +118,14 @@ Placed around the real demand patterns, seeded (`random_seed: 42`) and described
 - **Locations.** EAST_DC and WEST_DC (60/40 by customer region) and AMAZON_FBA. Each customer is
   assigned once, by a stable hash, to a region and, for FBA-enabled SKUs, possibly to Amazon, so
   each location keeps the real lumpiness of its customers' orders. Only small-basket customers
-  (median line ≤ 12 units) are Amazon shoppers. Demand shares: EAST 57%, WEST 33%, Amazon 10%.
+  (median line ≤ 12 units) are Amazon shoppers. Demand shares: EAST 56%, WEST 34%, Amazon 10%.
 - **Fulfilment.** A DC that cannot serve its region ships from the other DC when it can ($1.10
   extra per unit). Amazon demand is served from Amazon stock only. Unserved demand is lost.
 - **Products.** USD selling price from the source's median price × 1.27 × a markup of 2.0–2.6;
   landed cost 26–44% of price; fulfilment (DC 10% + $0.45, FBA 17% + $0.95) and advertising
   (4–14%) costs; contribution margin from those. Case pack = the most common order quantity among
   standard pack sizes; MOQ = 3–8 weeks of first-year demand in whole cases; cube 0.015–0.12 m³ per
-  case; service target by revenue class (A 97%, B 95%, C 90%); 70 of 200 SKUs on Amazon.
+  case; service target by revenue class (A 97%, B 95%, C 90%); 72 of 200 SKUs on Amazon.
 - **Suppliers.** Ten, in China, Vietnam, India, Bangladesh, Turkey, Mexico, Portugal and
   Indonesia. Lead time = supplier median × exp(supplier-week shock + per-order noise), plus a
   delay tail (4–12% of orders, mean 8–20 extra days) and occasional supplier-wide disruptions
@@ -142,6 +146,6 @@ Placed around the real demand patterns, seeded (`random_seed: 42`) and described
 The engine keeps `baseline` (true demand per day, SKU and location), lost units, the pre-uplift
 series and the true lead-time parameters. Planners receive a `PlannerView` that holds none of them:
 observed sales, inventory snapshots with their gaps, POs with the status a buyer would have seen,
-received lead times, announced events and master data. A test fails if a planner module imports
-the evaluation layer; another scrambles demand after a date and checks that no decision before it
-changes.
+received lead times, announced events and master data. A test fails if a planner module (or one
+of the two replayed planners) imports the evaluation layer; two others scramble demand after a date,
+one per planner, and check that no decision before it changes.

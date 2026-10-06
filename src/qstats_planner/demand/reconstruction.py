@@ -285,4 +285,4 @@ def _dispersion(sales: np.ndarray, clean: np.ndarray, min_shape: float = 0.3) ->
     m = np.where(n > 0, np.where(clean, sales, 0).sum(axis=0) / np.maximum(n, 1), 0)
     v = np.where(n > 1, np.where(clean, (sales - m[None]) ** 2, 0).sum(axis=0) / np.maximum(n - 1, 1), 0)
     k = np.where(v > 0, m**2 / np.maximum(v, 1e-9), 1.0)
-    return np.clip(k, 1.0, 20.0)
+    return np.clip(k, min_shape, 20.0)

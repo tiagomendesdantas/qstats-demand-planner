@@ -30,7 +30,12 @@ from qstats_planner.inventory.projection import expected_lost, project, schedule
 from qstats_planner.replenishment.order_quantity import round_up_to_pack
 
 SEVERITY_RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1, "INFO": 0}
+NO_DEMAND_DAILY = 0.01  # a forecast under one unit per hundred days is read as no forecast demand
 DC_NAMES = {EAST: "EAST_DC", WEST: "WEST_DC"}
+
+
+def _weeks(x: float) -> str:
+    return "over a year" if x > 52 else f"{x:.1f} weeks"
 
 
 def confidence_score(
@@ -63,7 +68,8 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
     lt_p90 = np.array([d.quantile(0.9) for d in st.sku_lead_time])
     mean_ltd = st.ltd.mean
     ss = np.maximum(st.target - mean_ltd, 0)
-    stock_now = p.on_hand.sum(axis=1) - (1 - inv["reserved_planning_weight"]) * p.fba_reserved + p.fba_inbound
+    on_hand = p.on_hand.sum(axis=1)  # physical units at every location
+    stock_now = on_hand - (1 - inv["reserved_planning_weight"]) * p.fba_reserved + p.fba_inbound
     open_po = view.open_purchase_orders()
     on_order = open_po.groupby("sku_idx")["quantity"].sum().reindex(range(n), fill_value=0).to_numpy()
     rec = scheduled_receipts(open_po, t, n, horizon)
@@ -78,8 +84,10 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
     # demand expected to be lost before an order placed today could land, given the open pipeline
     lost_before_new = expected_lost(stock_now, st.daily_fc, rec, np.minimum(lt_p50, horizon).astype(int))
     weekly13 = st.daily_fc[:91].sum(axis=0) / 13
-    cover_now = np.where(weekly13 > 0, (stock_now + on_order) / np.maximum(weekly13, 1e-9), np.inf)
-    cover_after = np.where(weekly13 > 0, (stock_now + on_order + st.order_qty) / np.maximum(weekly13, 1e-9), np.inf)
+    no_fc = weekly13 < 7 * NO_DEMAND_DAILY
+    per_week = np.where(no_fc, 1.0, weekly13)
+    cover_now = np.where(no_fc, np.inf, (stock_now + on_order) / per_week)
+    cover_after = np.where(no_fc, np.inf, (stock_now + on_order + st.order_qty) / per_week)
     h = st.history
     imputed_share = h.imputed[-8:].sum(axis=0) / np.maximum(h.Y[-8:].sum(axis=0), 1e-9)
     hist_weeks = h.valid.sum(axis=0)
@@ -196,7 +204,7 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
                     why,
                     {**base_ev, "Expected units lost before a new order lands": lost},
                     f"About {lost:,.0f} units of demand expected to be lost before a new order could land (open POs counted)",
-                    lost * cm[i],
+                    -lost * cm[i],  # a loss in the status quo, not value protected (as EXCESS carries its cost)
                 )
                 acted = True
 
@@ -276,7 +284,7 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
 
         # inter-DC transfer
         direct_week = weekly13[i] * (1 - st.fba_share[i])
-        if direct_week > 0:
+        if direct_week >= 7 * NO_DEMAND_DAILY:
             east_share = biz["locations"][0]["region_share"]
             need = np.array([direct_week * east_share, direct_week * (1 - east_share)])
             cover_dc = p.available[i, [EAST, WEST]] / np.maximum(need, 1e-9)
@@ -285,7 +293,8 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
                 if cover_dc[pi] < 2 and cover_dc[ri] > 8:
                     q = min(p.available[i, rich] - 6 * need[ri], 4 * need[pi] - p.available[i, poor])
                     q = int(round_up_to_pack(np.array([q]), np.array([prod.at[i, "case_pack"]]))[0])
-                    if q > 0:
+                    # a case that would sit beyond the excess ceiling at the receiving DC is not worth moving
+                    if 0 < q <= inv["excess_weeks_of_cover"] * need[pi]:
                         saving = q * biz["cross_dc_extra_cost_usd"]
                         add(
                             i,
@@ -293,8 +302,8 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
                             "MEDIUM",
                             q,
                             DC_NAMES[poor],
-                            f"{DC_NAMES[poor]} has {cover_dc[pi]:.1f} weeks of cover, {DC_NAMES[rich]} has "
-                            f"{cover_dc[ri]:.1f}. Move {q:,} units instead of cross-shipping orders.",
+                            f"{DC_NAMES[poor]} has {_weeks(cover_dc[pi])} of cover, {DC_NAMES[rich]} has "
+                            f"{_weeks(cover_dc[ri])}. Move {q:,} units instead of cross-shipping orders.",
                             {
                                 **base_ev,
                                 f"{DC_NAMES[poor]} available": float(p.available[i, poor]),
@@ -313,7 +322,9 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
             if sent > 0:
                 src = DC_NAMES[moves[0]["source"]]
                 fba_daily = st.daily_fc[:, i] * st.fba_share[i]
-                dos = (p.available[i, FBA] + p.fba_transfer[i]) / max(fba_daily[:28].mean(), 1e-9)
+                fba_rate = fba_daily[:28].mean()
+                no_demand = fba_rate < NO_DEMAND_DAILY
+                dos = (p.available[i, FBA] + p.fba_transfer[i]) / fba_rate if not no_demand else np.inf
                 remaining = {DC_NAMES[r["source"]]: float(p.available[i, r["source"]] - r["qty"]) for r in moves}
                 fba_so = stockout_day(
                     project(
@@ -325,20 +336,39 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
                 )[0]
                 short_b = expected_shortfall(_fba_samples(st, i), f["fba_position"])
                 short_a = expected_shortfall(_fba_samples(st, i), f["fba_position"] + sent)
+                small = (short_b - short_a) < 1.0
+                unit_fba = prod.at[i, "contribution_fba"]
+                if no_demand:
+                    why = (
+                        f"No Amazon demand is forecast; the target of {f['fba_target']:,.0f} is the forecast-error "
+                        f"allowance alone. Review before sending {sent:,} from {src}."
+                    )
+                else:
+                    why = (
+                        f"Amazon has {dos:.0f} days of supply; replenishment takes up to "
+                        f"{st.fba.attrs['transit_p90']:.0f} days (pick + transit). Send {sent:,} from {src}."
+                    )
+                    if small:
+                        why += " It avoids less than one unit of expected shortfall."
+                if unit_fba < 0:
+                    why += f" Each Amazon sale loses ${-unit_fba:,.2f}: review the listing."
+                if no_demand or small or unit_fba < 0:
+                    sev = "LOW"
+                else:
+                    sev = "HIGH" if dos < st.fba.attrs["transit_p90"] else "MEDIUM"
                 add(
                     i,
                     "SEND_TO_FBA",
-                    "HIGH" if dos < st.fba.attrs["transit_p90"] else "MEDIUM",
+                    sev,
                     sent,
                     "AMAZON_FBA",
-                    f"Amazon has {dos:.0f} days of supply; replenishment takes up to "
-                    f"{st.fba.attrs['transit_p90']:.0f} days (pick + transit). Send {sent:,} from {src}.",
+                    why,
                     {
                         "FBA available": float(p.available[i, FBA]),
                         "FBA inbound": float(p.fba_inbound[i]),
                         "FBA reserved": float(p.fba_reserved[i]),
                         "FBA transfer": float(p.fba_transfer[i]),
-                        "FBA days of supply": dos,
+                        "FBA days of supply": "no forecast demand" if no_demand else dos,
                         "FBA target": f["fba_target"],
                         "FBA position": f["fba_position"],
                         "Amazon share of demand": st.fba_share[i],
@@ -352,19 +382,34 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
                 acted = True
 
         # excess
-        if np.isfinite(cover_now[i]) and cover_now[i] > inv["excess_weeks_of_cover"]:
+        if no_fc[i] or cover_now[i] > inv["excess_weeks_of_cover"]:
             excess_units = stock_now[i] + on_order[i] - inv["excess_weeks_of_cover"] * weekly13[i]
             val = excess_units * cost[i]
             if val >= rc["excess_value_min_usd"] and qty == 0:
+                if no_fc[i]:
+                    lead = (
+                        f"No demand is forecast for the next 13 weeks: ${val:,.0f} of stock and open orders "
+                        "has no expected sale"
+                    )
+                else:
+                    cover_txt = f"{cover_now[i]:.0f} weeks" if cover_now[i] <= 104 else "More than two years"
+                    lead = (
+                        f"{cover_txt} of cover against a {inv['excess_weeks_of_cover']}-week ceiling: "
+                        f"${val:,.0f} tied up beyond it"
+                    )
                 add(
                     i,
                     "EXCESS",
                     "LOW",
                     int(excess_units),
                     "NETWORK",
-                    f"{cover_now[i]:.0f} weeks of cover against a {inv['excess_weeks_of_cover']}-week ceiling: "
-                    f"${val:,.0f} tied up beyond it." + (" Liquidation announced." if discontinued[i] else ""),
-                    {**base_ev, "Weeks of cover": cover_now[i], "Excess units": excess_units, "Excess value": val},
+                    lead + "." + (" Liquidation announced." if discontinued[i] else ""),
+                    {
+                        **base_ev,
+                        "Weeks of cover": "no forecast demand" if no_fc[i] else cover_now[i],
+                        "Excess units": excess_units,
+                        "Excess value": val,
+                    },
                     f"Carrying cost of the excess: about ${val * biz['holding_cost_annual_pct']:,.0f} a year",
                     -val * biz["holding_cost_annual_pct"],
                 )
@@ -428,6 +473,9 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
             "inventory_position": st.position,
             "stock_now": stock_now,
             "on_order": on_order,
+            "on_hand": on_hand,
+            # one excess definition for the KPIs and the inventory pages: physical stock beyond the ceiling
+            "excess_value": np.maximum(on_hand - inv["excess_weeks_of_cover"] * weekly13, 0) * cost,
             "recommended_quantity": st.order_qty,
             "raw_requirement": st.raw_requirement,
             "stockout_day": so,

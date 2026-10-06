@@ -23,7 +23,8 @@ def calibration_rows(env, history: list[dict], start: int, review_days: int) -> 
         t = h["t"]
         if t < start:
             continue
-        lt = np.array([env.lead_time(i, t)[0] for i in range(n)])
+        # an order decided at the end of day t is placed on day t + 1 and draws that week's lead time
+        lt = np.array([env.lead_time(i, t + 1)[0] for i in range(n)])
         end = t + 1 + lt + review_days
         ok = end <= env.n_days
         realised = np.where(ok, cs[np.minimum(end, env.n_days), np.arange(n)] - cs[t + 1], np.nan)

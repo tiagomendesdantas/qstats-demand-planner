@@ -107,10 +107,21 @@ class PlannerView:
         self.on_hand_history = _ro(np.where(known, on_hand_hist[: t + 1], np.nan))
         self.snapshot_known = _ro(known)
         self.position = position
-        self._pos = purchase_orders
-        self._lt_hist = lead_time_history
-        self._events = events
-        self._transfers = transfers
+        # Only what a buyer could know at t is kept: PO status as of t (true arrival dates and
+        # cancellations stay hidden until they happen), announced events without their uplift,
+        # transfers with arrival dates only once they have arrived.
+        self._po_table = _visible_purchase_orders(purchase_orders, t)
+        self._lt_hist = lead_time_history[["po_id", "supplier_id", "lead_time_days"]].copy()
+        if len(events):
+            self._events = events[events["announce_day"] <= t].drop(columns=["uplift"], errors="ignore").copy()
+        else:
+            self._events = events.drop(columns=["uplift"], errors="ignore").copy()
+        tr = pd.DataFrame(
+            [x for x in transfers if x["decided_day"] <= t],
+            columns=["sku_idx", "qty", "source", "decided_day", "ship_day", "arrive_day", "policy"],
+        )
+        tr.loc[tr["arrive_day"] > t, "arrive_day"] = np.nan
+        self._transfers = tr
         self.first_planning_day = first_planning_day
         self.launched = _ro(launch_day_known <= t)
         self.launch_day = _ro(np.where(launch_day_known <= t, launch_day_known, -1))
@@ -124,51 +135,7 @@ class PlannerView:
 
     def purchase_orders(self) -> pd.DataFrame:
         """Every PO with the status the buyer would have seen at the plan date."""
-        t = self.t
-        rows = []
-        for po in self._pos:
-            if po["order_day"] > t:
-                continue
-            ship = po["order_day"] + po["production_days"]
-            if po["cancelled"] and t >= ship:
-                status, actual = "CANCELLED", None
-            elif not po["cancelled"] and po["arrival_day"] <= t:
-                status, actual = "RECEIVED", po["arrival_day"]
-            elif t > po["expected_day"]:
-                status, actual = "DELAYED", None
-            elif t >= ship:
-                status, actual = "IN_TRANSIT", None
-            else:
-                status, actual = "OPEN", None
-            rows.append(
-                {
-                    "po_id": po["po_id"],
-                    "sku_idx": po["sku_idx"],
-                    "supplier_id": po["supplier_id"],
-                    "qty_east": po["qty"][0],
-                    "qty_west": po["qty"][1],
-                    "quantity": po["qty"][0] + po["qty"][1],
-                    "order_day": po["order_day"],
-                    "expected_day": po["expected_day"],
-                    "actual_day": actual,
-                    "status": status,
-                    "policy": po.get("policy", ""),
-                }
-            )
-        cols = [
-            "po_id",
-            "sku_idx",
-            "supplier_id",
-            "qty_east",
-            "qty_west",
-            "quantity",
-            "order_day",
-            "expected_day",
-            "actual_day",
-            "status",
-            "policy",
-        ]
-        return pd.DataFrame(rows, columns=cols)
+        return self._po_table.copy()
 
     def open_purchase_orders(self) -> pd.DataFrame:
         po = self.purchase_orders()
@@ -196,10 +163,7 @@ class PlannerView:
     # ------------------------------------------------------------------ events and transfers
 
     def events(self) -> pd.DataFrame:
-        e = self._events
-        if e.empty:
-            return e
-        return e[e["announce_day"] <= self.t].drop(columns=["uplift"], errors="ignore")
+        return self._events.copy()
 
     def discontinued(self) -> np.ndarray:
         """SKUs with an announced liquidation: no new purchases."""
@@ -210,8 +174,33 @@ class PlannerView:
         return out
 
     def transfers(self) -> pd.DataFrame:
-        rows = [tr for tr in self._transfers if tr["decided_day"] <= self.t]
-        out = pd.DataFrame(rows, columns=["sku_idx", "qty", "source", "decided_day", "ship_day", "arrive_day", "policy"])
-        # Arrival dates of transfers still in transit are not known to the buyer.
-        out.loc[out["arrive_day"] > self.t, "arrive_day"] = np.nan
-        return out
+        return self._transfers.copy()
+
+
+PO_COLUMNS = [
+    "po_id", "sku_idx", "supplier_id", "qty_east", "qty_west", "quantity", "order_day", "expected_day",
+    "actual_day", "status", "policy",
+]
+
+
+def _visible_purchase_orders(pos: list[dict], t: int) -> pd.DataFrame:
+    """POs as the buyer saw them at t: status from what had happened by t; the actual arrival
+    day only for received orders; a cancellation only once the supplier announced it."""
+    rows = []
+    for po in pos:
+        if po["order_day"] > t:
+            continue
+        ship = po["order_day"] + po["production_days"]
+        if po["cancelled"] and t >= ship:
+            status, actual = "CANCELLED", None
+        elif not po["cancelled"] and po["arrival_day"] <= t:
+            status, actual = "RECEIVED", po["arrival_day"]
+        elif t > po["expected_day"]:
+            status, actual = "DELAYED", None
+        elif t >= ship:
+            status, actual = "IN_TRANSIT", None
+        else:
+            status, actual = "OPEN", None
+        rows.append((po["po_id"], po["sku_idx"], po["supplier_id"], po["qty"][0], po["qty"][1], po["qty"][0] + po["qty"][1],
+                     po["order_day"], po["expected_day"], actual, status, po.get("policy", "")))
+    return pd.DataFrame(rows, columns=PO_COLUMNS)

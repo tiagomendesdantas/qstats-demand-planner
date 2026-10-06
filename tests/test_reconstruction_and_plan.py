@@ -144,3 +144,29 @@ def test_planner_code_depends_on_neither_the_simulation_nor_the_evaluation_layer
             names += [a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names]
             assert not any(m.startswith("qstats_planner.evaluation") for m in names), f
             assert not any(m.startswith("qstats_planner.simulation") for m in names), f
+
+
+def test_replayed_planners_see_the_world_only_through_the_planner_view():
+    """The Legacy and QStats planners replayed in the comparison live in simulation/policies; they may
+    take the Decisions container from the engine, nothing else from the simulation or evaluation."""
+    for f in (SRC / "simulation" / "policies").glob("*.py"):
+        for n in ast.walk(ast.parse(f.read_text())):
+            if isinstance(n, ast.ImportFrom) and n.module:
+                assert not n.module.startswith("qstats_planner.evaluation"), f
+                assert n.module != "qstats_planner.simulation.environment", f
+                if n.module == "qstats_planner.simulation.engine":
+                    assert [a.name for a in n.names] == ["Decisions"], f
+            if isinstance(n, ast.Import):
+                assert not any(a.name.startswith(("qstats_planner.evaluation", "qstats_planner.simulation")) for a in n.names), f
+
+
+UCI_COLUMNS = ("Invoice", "StockCode", "InvoiceDate", "Customer ID")
+
+
+def test_only_the_uci_adapter_knows_uci_column_names():
+    for f in SRC.rglob("*.py"):
+        if f.relative_to(SRC).as_posix() == "adapters/uci.py":
+            continue
+        text = f.read_text()
+        for col in UCI_COLUMNS:
+            assert f'"{col}"' not in text and f"'{col}'" not in text, (f, col)

@@ -10,7 +10,9 @@ from typing import Any
 
 import yaml
 
-ROOT = Path(__file__).resolve().parents[3]
+# The repository root: config/, data/ and the SQLite file live under it. QSTATS_ROOT sets it for a
+# non-editable install, where this file sits inside site-packages.
+ROOT = Path(os.getenv("QSTATS_ROOT") or Path(__file__).resolve().parents[3])
 DEFAULT_CONFIG = ROOT / "config" / "demo.yaml"
 
 
@@ -23,7 +25,7 @@ def _load(path: str) -> dict[str, Any]:
 def load_config(path: str | Path | None = None, **overrides: Any) -> dict[str, Any]:
     """Return a fresh copy of the configuration, with dotted-key overrides applied.
 
-    >>> cfg = load_config(**{"inventory.target_service_level": 0.97})
+    >>> cfg = load_config(**{"inventory.excess_weeks_of_cover": 20})
     """
     path = Path(path or os.getenv("QSTATS_CONFIG", DEFAULT_CONFIG))
     cfg = copy.deepcopy(_load(str(path)))

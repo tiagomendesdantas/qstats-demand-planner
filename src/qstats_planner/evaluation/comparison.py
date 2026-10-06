@@ -38,8 +38,11 @@ PER_SKU_COLUMNS = [
 
 
 def scoring_window(env, cfg) -> tuple[int, int]:
+    """From the day QStats's first orders (placed after its first weekly plan, a week into the fork)
+    can arrive at the longest quoted lead time, to the end of the data."""
     fork = (cfg["simulation"]["fork_week"] - 1) * 7
-    return fork + int(env.suppliers["quoted_lead_time_days"].max()), env.n_days
+    first_order_day = fork + cfg["simulation"]["review_period_days"]
+    return first_order_day + int(env.suppliers["quoted_lead_time_days"].max()), env.n_days
 
 
 def per_sku(env, eng, policy_history: list[dict], cfg: dict, start: int, end: int) -> pd.DataFrame:
@@ -198,12 +201,18 @@ def bootstrap(
         sums = {k: summarise(v.iloc[idx], cfg) for k, v in per_variant.items() if k in set(legacy_family) | set(qstats_family)}
         m = matched_comparison(sums, legacy_ref, legacy_family, qstats_family)
         h, r = sums[qstats_family[0]], sums[legacy_ref]
+        low = min((sums[k] for k in qstats_family), key=lambda x: x["fill_rate"])
         rows.append(
             {
                 **m,
                 "fill_diff": h["fill_rate"] - r["fill_rate"],
                 "inventory_diff": h["average_inventory_value"] - r["average_inventory_value"],
                 "lost_contribution_diff": h["lost_contribution"] - r["lost_contribution"],
+                # where each frontier ends, so out-of-range resamples can be read: which side, and
+                # whether QStats's lowest setting already beats the legacy reference on both counts
+                "qstats_lowest_fill": low["fill_rate"],
+                "qstats_lowest_inventory": low["average_inventory_value"],
+                "legacy_highest_fill": max(sums[k]["fill_rate"] for k in legacy_family),
             }
         )
     return pd.DataFrame(rows)

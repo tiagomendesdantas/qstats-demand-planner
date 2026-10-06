@@ -12,12 +12,17 @@ perf["champion"] = perf["champion"].astype(bool)
 sp = data.table("sku_plan")
 prods = data.table("products")
 segs = data.table("segment_scores").set_index("segment")
+fc = data.cfg()["forecasting"]
+own = sp["selection_reason"].str.startswith("SKU's own best")
+hsel = (sp["lt_p50"] + data.cfg()["simulation"]["review_period_days"]) / 7
 
 theme.title(
     "Forecast performance",
     "Champion/challenger by rolling origin: every candidate forecasts from every past week "
-    "using only data up to that week. The champion is chosen per segment on error of total demand over the lead "
-    "time, the quantity a purchase decision rests on. Never a random split.",
+    "using only data up to that week, scored on total demand over lead time + review, the quantity a purchase "
+    "decision rests on. Each segment gets a champion; a SKU keeps its own pick only when it beats the segment's by "
+    f"{fc['sku_override_margin']:.0%} on {fc['sku_override_min_blocks']} or more non-overlapping windows "
+    f"({int(own.sum())} of {len(sp)} SKUs this week). Never a random split.",
 )
 
 champ = perf[perf["champion"]]
@@ -37,15 +42,16 @@ theme.callout(
 theme.section("Champion by segment (scaled error of lead-time demand; lower is better)")
 rows = []
 for seg, g in sp.groupby("segment"):
-    c = g["champion_model"].value_counts()
-    sc = segs.loc[seg] if seg in segs.index else pd.Series(dtype=float)
-    best = sc.drop(labels=[c.index[0]], errors="ignore").dropna()
+    champion = segs.at[seg, "champion"] if seg in segs.index else "—"
+    sc = segs.loc[seg].drop("champion") if seg in segs.index else pd.Series(dtype=float)
+    sc = pd.to_numeric(sc, errors="coerce")
+    best = sc.drop(labels=[champion], errors="ignore").dropna()
     rows.append(
         {
             "Segment": seg,
             "SKUs": len(g),
-            "Champion": c.index[0],
-            "Champion error": sc.get(c.index[0], np.nan),
+            "Champion": champion,
+            "Champion error": sc.get(champion, np.nan),
             "Naive error": sc.get("naive", np.nan),
             "Best other": best.idxmin() if len(best) else "—",
             "Best other error": best.min() if len(best) else np.nan,
@@ -61,10 +67,13 @@ st.dataframe(
     },
 )
 theme.note(
-    "Scaled error = |forecast − actual| of total demand over 6–14 weeks ÷ (the SKU's mean weekly demand × weeks). "
-    "A simpler model within 2% of the best wins (parsimony); an incumbent is kept unless beaten by 5%; a SKU gets its "
-    "own model only if it beats the segment champion by 15% on three non-overlapping windows. NEW_PRODUCT SKUs have "
-    "too few windows and use the pooled champion."
+    f"Scaled error = |forecast − actual| of total demand over the SKU's lead time + review ({hsel.min():.0f}–"
+    f"{hsel.max():.0f} weeks this week, scored on the nearest of 6, 8, 11 or 14) ÷ (the SKU's mean weekly demand × "
+    "weeks). "
+    f"A simpler model within {fc['parsimony_margin']:.0%} of the best wins (parsimony); an incumbent is kept unless "
+    f"beaten by {fc['switch_margin']:.0%}; a SKU gets its own model only if it beats the segment champion by "
+    f"{fc['sku_override_margin']:.0%} on {fc['sku_override_min_blocks']} non-overlapping windows. NEW_PRODUCT SKUs "
+    "have too few windows and use the pooled champion."
 )
 
 theme.section("Challenger: statsmodels ETS fitted per SKU")
@@ -100,10 +109,12 @@ if len(ets):
     tot_c = (ets["champion_error"] * ets["windows"]).sum() / ets["windows"].sum()
     tot_e = (ets["ets_error"] * ets["windows"]).sum() / ets["windows"].sum()
     theme.note(
-        f"ETS(A, Ad, N) with smoothing, trend and damping fitted by maximum likelihood at every fourth origin of "
-        f"the last 52 weeks, on the same windows and scaled error as the champion: {tot_e:.3f} vs {tot_c:.3f} "
-        f"over {int(ets['windows'].sum()):,} windows. Fitting parameters per SKU on one or two years of lumpy "
-        "weekly demand overfits; pooling the choice by segment does better. Reported, not used to plan."
+        "ETS(A, Ad, N) with smoothing, trend and damping fitted by maximum likelihood at every fourth origin of the "
+        "last 26 weeks, against the champion each SKU had 26 weeks before the plan date, so both are out of sample. "
+        f"Same windows and scaled error: ETS {tot_e:.3f} vs champion {tot_c:.3f} over {int(ets['windows'].sum()):,} "
+        f"windows on {len(ets)} SKUs. ETS did {'worse' if tot_e > tot_c else 'better'} overall, and "
+        f"{'worse' if tot_e > tot_c else 'better'} in {int(((g['ETS error'] > g['champion error']) == (tot_e > tot_c)).sum())} "
+        f"of {len(g)} segments. Reported, not used to plan."
     )
 
 theme.section("By SKU")
@@ -143,8 +154,9 @@ st.dataframe(
     },
 )
 theme.note(
-    "A challenger can beat the champion on one SKU: the champion is chosen for the segment, because one SKU's "
-    "two or three independent windows are too few to choose among 25 models without fitting noise."
+    "A challenger can beat the champion on one SKU: a SKU's own windows decide only when there are at least "
+    f"{fc['sku_override_min_blocks']} non-overlapping ones and the margin is {fc['sku_override_margin']:.0%}, "
+    "because a handful of windows is too few to choose among 25 models without fitting noise."
 )
 
 theme.section("Backtest: one-week-ahead forecasts against what happened")
@@ -204,14 +216,18 @@ fig.update_yaxes(tickformat=".0%", range=[0.4, 1.0])
 fig.update_layout(hovermode="closest")
 theme.show(fig)
 c90, c95 = (cal["realised"] <= cal["q90"]).mean(), (cal["realised"] <= cal["q95"]).mean()
+peak95 = (cal.loc[cal["peak"], "realised"] <= cal.loc[cal["peak"], "q95"]).mean()
+new = cal[cal["segment"] == "NEW_PRODUCT"] if "segment" in cal else cal.iloc[:0]
+new95 = (new["realised"] <= new["q95"]).mean() if len(new) else float("nan")
 theme.note(
     "From the controlled replay (World Q, all 200 SKUs, overlapping weekly windows, no interval computed): at every "
-    "weekly plan QStats recorded its quantiles of demand over lead time + review; the outcome uses the lead time that "
-    f"SKU's order would actually have had that week. Overall the P90 held {c90:.0%} of outcomes and the P95 {c95:.0%}"
+    "weekly plan QStats recorded its quantiles of demand over lead time + review; the outcome uses the lead time an "
+    f"order placed that week would have had. Overall the P90 held {c90:.0%} of outcomes and the P95 {c95:.0%}"
     + (
-        ": the intervals run narrow, most in the peak season. Two likely causes, both by construction: the errors come "
-        "from the windows used to select the champion, and windows more than 10% reconstructed (busy stockout periods) "
-        "are not scored. Recalibrating them is the first roadmap item."
+        f": the intervals run narrow (P95: {peak95:.0%} in the September–December season, {new95:.0%} for new "
+        "products). Two likely causes, both by construction: the errors come from the windows used to select the "
+        "champion, and windows more than 10% reconstructed (busy stockout periods) are not scored. Recalibrating them "
+        "is the first roadmap item."
         if c95 < 0.93
         else "."
     )

@@ -124,7 +124,15 @@ numbers is logged below with the numbers before and after.
 | Legacy FBA rule | Counts pick + transit + review time | In 75% of FBA stockout days the DCs had stock: the first version was mis-specified, not a legacy weakness |
 | Cross-DC fulfilment | Allowed | WEST fill 70% vs EAST 84% with no cross-shipping, which no order system would accept |
 
-## Development results (dev SKUs, headline subset, 101 SKUs)
+The same rules, re-applied in the third run to the dev SKUs as redrawn by the selection fix (change
+log): legacy α stays 0.2 (one-week MAE 38.7 vs 40.1 at 0.1 and 39.2 at 0.3); the reconstruction
+method becomes censored_gamma (two-sided episode MAE 116.8 vs local_profile 121.2, pre/post velocity
+128.3, model expectation 160.7, none 213.2).
+
+## Development results (first dev population, headline subset, 101 SKUs)
+
+These informed the decisions above. The dev SKUs were redrawn in the third run and the comparison
+was not rerun on them, so this section is a record of what was known before the demo run.
 
 | | Legacy-30 | QStats |
 |---|---|---|
@@ -140,101 +148,107 @@ saving at today's service level is weak, and the size of the high-service advant
 supply luck. Calibration on dev: P80 covered 77.5%, P90 86.1%, P95 90.0% (narrow, worse in the
 peak season and for new products). Null world (dev, seed 42): 9.4% saving, interval 1.8% to 14.2%.
 
-## Test results (demo SKUs, run on 2026-10-06; current numbers, corrections in the change log)
+## Test results (demo SKUs; third run, 2026-10-06; corrections in the change log)
 
-Headline subset: 168 demo SKUs without simulated events (the same 168 in every world). Reference
-world (supply seed 42) unless stated. Sign convention for the two matched metrics: positive = QStats
-holds less inventory.
+Headline subset: 168 demo SKUs without simulated events (the same 168 in every world). Scoring
+window 15 Feb – 7 Dec 2025, 296 days (see the change log: it now starts when QStats's first orders
+can arrive). Reference world (supply seed 42) unless stated. Sign convention for the two matched
+metrics: positive = QStats holds less inventory.
 
 | | Legacy-30 | QStats |
 |---|---|---|
-| Fill rate | 82.0% | 88.7% |
-| In-stock rate | 88.0% | 91.3% |
-| Average inventory | $217.4k | $353.9k |
-| Lost contribution | $132.2k | $78.2k |
-| Carrying cost (24% a year) | $43.3k | $70.5k |
-| Cross-DC shipping | $22.5k | $15.9k |
-| Inventory turns | 3.09 | 2.06 |
-| Excess at the end | $44.2k | $102.2k |
-| Ending position (on hand + on order) | $346.3k | $458.4k |
-| One-week WAPE | 0.623 | 0.633 |
-| Forecast bias | −20.6% | −9.7% |
+| Fill rate | 84.0% | 92.3% |
+| In-stock rate | 87.0% | 90.2% |
+| Average inventory | $246.9k | $435.8k |
+| Lost contribution | $146.1k | $58.4k |
+| Carrying cost (24% a year, 296 days) | $48.1k | $84.8k |
+| Cross-DC shipping | $27.8k | $15.4k |
+| Inventory turns | 3.55 | 2.21 |
+| Excess at the end | $41.4k | $149.3k |
+| Ending position (on hand + on order) | $405.5k | $615.1k |
+| One-week WAPE | 0.616 | 0.640 |
+| Forecast bias | −20.5% | −6.8% |
 
 **Primary metric: not distinguishable from zero.** To deliver Legacy-30's fill rate QStats needs
-2.6% *more* inventory (90% interval: from 6.5% less to 14.4% more). In 10.5% of the 1,000
-resamples Legacy-30's fill rate fell below QStats's lowest setting (70% target), outside the
-frontier; the interval is computed over the 89.5% in range. Replicate worlds: 1.0% more (seed 7),
-0.9% less (seed 2026). At the service level the current process delivers, QStats does not save
-inventory.
+2.3% *more* inventory (90% interval: from 6.3% less to 14.2% more). In 37.8% of the 1,000 resamples
+Legacy-30's fill rate fell below QStats's lowest setting (70% target), outside the frontier; the
+interval is computed over the 62.2% in range. In 10.9% of all resamples that lowest setting also
+held no more inventory than Legacy-30, so the excluded resamples lean toward QStats. Replicate
+worlds: 0.6% less (seed 7), 3.2% more (seed 2026). At the service level the current process
+delivers, QStats does not save inventory.
 
-**Secondary metric: also not distinguishable from zero, positive in all three worlds.** To reach
-QStats's fill rate (88.7%) the Legacy rule needs 5.0% more inventory than QStats (90% interval
-−14.9% to +25.0%; 2.1% of resamples out of range); 13.5% and 9.7% in the replicate worlds. In
-plain terms QStats ran the business like the current process with about 90 days of safety stock
-(Legacy-90: 88.8% fill with $374.3k), on about 5% less inventory.
+**Secondary metric: out of range in the reference world.** QStats's fill rate (92.3%) is above the
+highest point of the Legacy frontier (120 days of safety stock: 92.1% fill with $558.3k, 28.1% more
+inventory than QStats's $435.8k), and the plan does not extrapolate. 66.0% of the resamples are out
+of range for the same reason. Replicate worlds: the Legacy rule needs 7.1% more (seed 7) and 28.2%
+more (seed 2026) inventory than QStats to reach QStats's fill.
 
-**Money over the 303 scored days:** QStats recovered $54.0k of contribution and saved $6.6k of
-cross-DC shipping, at $27.2k of extra carrying cost: about +$33k, while ending with $58.0k more
-stock beyond 26 weeks of demand and $112.1k more on hand and on order.
+**Money over the 296 scored days:** QStats recovered $87.6k of contribution and saved $12.4k of
+cross-DC shipping, at $36.8k of extra carrying cost: about +$63k against Legacy-30, while ending
+with $107.9k more stock beyond 26 weeks of demand and $209.5k more on hand and on order. Legacy-120,
+at nearly the same fill (92.1%), nets about +$33k against Legacy-30 on the same terms, so about half
+of QStats's figure is the higher service level itself.
 
 **Service targets vs fill.** The targets (A 97%, B 95%, C 90%) are cycle service levels: the
-chance that what is ordered now covers demand until the next order arrives. Realised unit fill (88.7%)
-is lower because fill is a different measure, because the intervals run narrow (below), and
-because the 168 SKUs include new products, products that die, and Amazon channels that were never
-stocked (below).
+chance that what is ordered now covers demand until the next order arrives. Realised unit fill
+(92.3%) is lower because fill is a different measure, because the intervals run narrow (below), and
+because the 168 SKUs include new products, products that die, and Amazon channels that never sold
+(below).
 
 **Class targets vs one target.** In all three worlds QStats at a uniform 95% beat the class targets
-it uses: more fill with less stock (seed 42: 88.9% with $334.0k vs 88.7% with $353.9k; seed 7:
-89.4% / $343.0k vs 89.0% / $360.6k; seed 2026: 89.1% / $326.1k vs 88.6% / $347.2k). The class
+it uses: more fill with less stock (seed 42: 93.0% with $429.9k vs 92.3% with $435.8k; seed 7:
+92.3% / $380.8k vs 91.5% / $410.5k; seed 2026: 92.5% / $392.0k vs 92.2% / $416.2k). The class
 targets were fixed before the run and are kept; setting targets by margin is on the roadmap.
 
 **Ablation (inventory the Legacy frontier needs at the arm's fill rate / arm's inventory − 1;
-seeds 42 / 7 / 2026; empty = outside the Legacy frontier):**
+seeds 42 / 7 / 2026; — = outside the Legacy frontier):**
 
 | Arm (reconstruction · seasonal prior · safety stock) | Efficiency vs Legacy frontier |
 |---|---|
-| Legacy + seasonal prior | +12.2% / +5.6% / +14.4% |
-| — · — · 30-day | +0.3% / −1.4% / +0.2% |
-| — · — · probabilistic | −5.4% / −3.0% / −7.8% |
-| — · prior · 30-day | — / — / — (77.7% fill, WAPE 0.707 in seed 42) |
-| — · prior · probabilistic | −27.5% / −30.4% / −24.6% |
-| reconstruction · — · 30-day | −1.0% / −2.3% / −0.4% |
-| reconstruction · — · probabilistic | +13.0% / +8.6% / +3.0% |
-| reconstruction · prior · 30-day | +4.4% / +10.7% / +8.2% |
-| reconstruction · prior · probabilistic (QStats) | +5.0% / +13.5% / +9.7% |
-| QStats at 95% for every SKU | +14.9% / +32.4% / +29.6% |
+| Legacy + seasonal prior | +19.3% / +20.5% / +24.6% |
+| — · — · 30-day (13 candidates, raw sales) | — / — / — (below Legacy-15's fill, with more inventory than it, in every world) |
+| — · — · probabilistic | −44.8% / −48.4% / −46.2% |
+| — · prior · 30-day | — / — / −13.8% (below Legacy-15's fill, with more inventory than it, in seeds 42 and 7) |
+| — · prior · probabilistic | −41.7% / −45.7% / −37.1% |
+| reconstruction · — · 30-day | −5.3% / −6.9% / −1.4% |
+| reconstruction · — · probabilistic | +16.6% / −14.2% / +1.3% |
+| reconstruction · prior · 30-day | +6.5% / +2.8% / +16.1% |
+| reconstruction · prior · probabilistic (QStats) | — / +7.1% / +28.2% (above Legacy-120's fill in seed 42) |
+| QStats at 90% for every SKU | +26.2% / +13.4% / +16.8% |
+| QStats at 95% for every SKU | — / +35.5% / — (above Legacy-120's fill in seeds 42 and 2026) |
 
-No ingredient helps alone: the 25-model forecaster alone, reconstruction alone and the prior alone
-(in the QStats model set) add nothing or hurt; they help in combination with reconstruction. The
-seasonal prior alone helps the legacy SES rule, and **Legacy + prior matches or beats full QStats
-in two of three worlds** (12.2% vs 5.0% and 14.4% vs 9.7%; 5.6% vs 13.5% in the third).
-Probabilistic safety stock learned from censored sales is worse than the 30-day rule.
+No QStats ingredient helps alone: reconstruction alone costs efficiency, probabilistic safety stock
+learned from raw, censored sales costs 45–48%, the forecaster alone sits below the whole Legacy
+frontier in every world, and the prior alone does in two of three (−13.8% in the third). With reconstruction, the prior helps in all three worlds and probabilistic
+safety stock in two. **Legacy + prior is the strongest single change** (+19.3% to +24.6%); full
+QStats can be read in two worlds and beats it in one (28.2% vs 24.6%; 7.1% vs 20.5% in the other).
 
-**Forecast accuracy: no improvement claimed.** WAPE 0.633 vs 0.623, 0.627 vs 0.628, 0.625 vs
-0.626 (QStats vs Legacy, three worlds). Bias is halved in all three (−9.7 / −9.0 / −8.9% vs
-−20.6 / −19.8 / −20.1%).
+**Forecast accuracy: worse, and no improvement claimed.** WAPE 0.640 vs 0.616, 0.652 vs 0.621,
+0.644 vs 0.622 (QStats vs Legacy, three worlds). Bias falls from −20.5 / −19.8 / −19.6% to
+−6.8 / −6.6 / −6.5%. The live plan's out-of-sample challenger (forecasting methodology) suggests
+the SKU-level model override fits noise.
 
-**Calibration (QStats, all 200 SKUs, 6,560 overlapping SKU-weeks, no interval):** the P80 covered
-75.6%, P90 83.9%, P95 89.1%. Too narrow, most in the peak season (P95 84.7%), for new products
-(77.1%) and for the 54 seasonal SKU-weeks (77.8%; most Christmas products are classed INTERMITTENT
-first, so the SEASONAL segment is small). REGULAR SKUs, 513 SKU-weeks, are close to nominal (P90
-90.1%, P95 96.1%).
+**Calibration (QStats, all 200 SKUs, 6,385 overlapping SKU-weeks, no interval):** the P50 covered
+54.9%, P80 75.3%, P90 83.8%, P95 89.1%. Too narrow, most for new products (P90 57.2%, P95 66.6%;
+458 SKU-weeks) and in the peak season (P95 85.2%). REGULAR SKUs, 479 SKU-weeks, are close to
+nominal (P90 89.8%, P95 94.6%).
 
-**Amazon channels never stocked.** 12 of 70 FBA-enabled SKUs in World Q (13 in World L) never sold
-on Amazon after the fork: the channel was never stocked, so its sales stayed at zero and neither
-planner saw demand there (12,051 units of Amazon demand in World Q). A channel that was never
-stocked looks exactly like a channel with no demand.
+**Amazon channels that never sold.** 18 of 72 FBA-enabled SKUs in World Q (19 in World L) never
+sold on Amazon after the fork; 16 of them (17) had Amazon demand, 7,886 units in World Q (7,959 in
+World L) that went unserved. With no stock there is no sale, so neither planner saw that demand: a
+channel that never sells looks exactly like a channel with no demand.
 
-**Event SKUs (32, reported separately):** QStats 94.9% fill with $96.7k inventory; Legacy-30 90.2%
-with $71.6k.
+**Event SKUs (32: 24 with promotions, 8 with a liquidation; reported separately):** QStats 91.8%
+fill with $48.7k inventory; Legacy-30 89.0% with $36.5k.
 
 **Sensitivity worlds (same 168 SKUs):** with lead times always equal to the quote and no events,
-QStats saves 8.7% at Legacy-30's fill rate (interval 1.4% to 12.6%), and the Legacy rule needs
-19.9% more inventory to reach QStats's fill (interval −4.5% to +43.0%). QStats's edge in this
-replay does not come from modelling lead-time uncertainty: it was larger when lead times were
-certain. With optimistic quotes (25th percentile) Legacy-30's fill drops to 80.0%, below QStats's
-frontier (primary metric out of range; 49.9% of resamples out of range); the Legacy rule needs
-12.8% more inventory than QStats to reach QStats's 89.2%.
+QStats saves 5.6% at Legacy-30's fill rate (interval from 5.7% more to 12.8% less; 41.4% of
+resamples out of range), and the Legacy rule needs 37.1% more inventory to reach QStats's fill
+(interval +9.7% to +57.9%; 6.5% out of range). QStats's edge in this replay does not come from
+modelling lead-time uncertainty: it was larger when lead times were certain. With optimistic
+quotes (25th percentile) Legacy-30's fill drops to 80.9%, below QStats's lowest setting (82.4%), and
+QStats reaches 92.2%, above Legacy-120's 92.0%: both matched metrics are out of range (76.2% and
+62.5% of resamples).
 
 ### Known limitations of this evaluation
 
@@ -249,6 +263,13 @@ frontier (primary metric out of range; 49.9% of resamples out of range); the Leg
 - Error quantiles come from the champion's errors on the windows used to select it (a winner's
   curse), and windows more than 10% reconstructed are not scored, which leaves out busy stockout
   periods. Both likely contribute to the narrow intervals.
+- QStats now runs near the top of the Legacy frontier, so the secondary metric falls out of range
+  in the reference world. Legacy settings above 120 days were not run, and adding them after seeing
+  the results would be a change the plan does not allow; the dominance over Legacy-120 is reported
+  instead.
+- The reported numbers are the third run. Its corrections changed the SKU sample (a selection bug)
+  and, by re-applying the pre-set development rule, the reconstruction method; the change log
+  attributes the movement between runs.
 
 ## Change log
 
@@ -271,3 +292,66 @@ frontier (primary metric out of range; 49.9% of resamples out of range); the Leg
   version left out the arms that add nothing. (5) Planner code was moved so it no longer imports the
   simulation (location constants and `PlannerView` to `domain/`); the rerun reproduced every base
   result exactly (largest difference 0.0).
+- 2026-10-06, third correction, after a second independent audit of code, numbers and wording (98
+  confirmed findings; wording fixes are not listed here). Corrections that change results:
+  1. **SKU selection.** Eligibility and profile metrics were computed on series zero-filled up to
+     each SKU's last sale in the full two-year file, and "still selling at the end of the selection
+     year" used that last sale: year-two information leaked into a year-one selection. Both now use
+     data up to the end of the selection year only. This redrew 94 of the 200 demo SKUs and 67 of
+     the 120 dev SKUs.
+  2. **Seasonal prior panel.** The same leak decided which products counted as selling through the
+     first year: 1,508 → 1,490 products (1,419 general, 71 Christmas-type).
+  3. **Keywords** were matched as substrings (STAR matched START, TREE matched STREET); now whole
+     words.
+  4. **Censored-gamma reconstruction** ignored its configured dispersion floor (0.3) and clipped at
+     1.0.
+  5. **Champions and error tables were fitted on the two-sided reconstruction,** which uses data
+     after each backtest origin; the backtest now uses the reconstruction as it stood on the day.
+     Forecasts still use the two-sided one.
+  6. **Hysteresis** judged a SKU-level pick on segment scores; it now compares on the SKU's own
+     windows when both models are scored there.
+  7. **Seasonal naive** was dropped whenever the prior was off (ablation arms); it is now a
+     candidate in every arm (13 without the prior).
+  8. **The 30-day ablation arms** sized cycle stock as the mean of the error mixture instead of the
+     point forecast over the quoted lead time + review, which is what the legacy rule uses.
+  9. **Order split:** the rounding remainder went to EAST_DC whenever its fractional share was at
+     least 0.5; it now goes to the preferred DC.
+  10. **Scoring window** started at the fork + the longest quote, but QStats's first orders are
+      placed a week into the fork. It now starts at fork + review + longest quote: 8 Feb → 15 Feb
+      2025, 303 → 296 days.
+  11. **Calibration** used the lead time of the day before the order was placed.
+  12. **Inventory-feed gaps** were 5–14 days long, not the documented 5–15.
+  13. **Future trading days** assumed a 23 Dec – 3 Jan shutdown; the shifted history shows
+      27/28 Dec – 6/7 Jan.
+  14. The `PlannerView` kept the engine's raw purchase-order records (true arrival days) in a private
+      attribute. No planner read it; it now holds only what a buyer would see.
+
+  Re-applying the development rule to the redrawn dev SKUs kept legacy α = 0.2 and switched the
+  reconstruction method to censored_gamma (see the decisions above).
+
+  Effect on the reference world (seed 42), one step at a time. The two middle rows were run only to
+  attribute the change and are not reported results:
+
+  | Step | Fill, Legacy-30 / QStats | Primary (90% interval; out of range) | Secondary (90% interval; out of range) | WAPE, QStats / Legacy |
+  |---|---|---|---|---|
+  | Before | 82.0% / 88.7% | −2.6% (−14.4% to +6.5%; 10.5%) | +5.0% (−14.9% to +25.0%; 2.1%) | 0.633 / 0.623 |
+  | Code and environment fixes (same SKUs, local_profile) | 81.9% / 89.4% | −1.1% (−15.8% to +4.8%; 28.8%) | +11.5% (−10.5% to +25.8%; 17.2%) | 0.653 / 0.618 |
+  | + redrawn SKUs | 84.0% / 92.3% | −6.4% (−20.3% to +4.6%; 21.4%) | out of range (60.5%) | 0.638 / 0.616 |
+  | + censored_gamma (the reported run) | 84.0% / 92.3% | −2.3% (−14.2% to +6.3%; 37.8%) | out of range (66.0%) | 0.640 / 0.616 |
+
+  At today's service level the conclusion holds at every step: no saving distinguishable from zero.
+  The secondary metric went out of range with the new SKU sample, on which QStats runs above the top
+  of the Legacy frontier. Replicate worlds, primary: −1.0% / +0.9% → +0.6% / −3.2% (seeds 7 /
+  2026); secondary: +13.5% / +9.7% → +7.1% / +28.2%. Null world: saving 8.7% (1.4% to 12.6%) → 5.6%
+  (−5.7% to +12.8%); Legacy extra +19.9% → +37.1%. Calibration barely moved (P90 83.9% → 83.8%, P95
+  89.1% → 89.1%). The full run was repeated after adding the out-of-range bookkeeping below and
+  reproduced every number exactly.
+
+  Corrections that leave the comparison unchanged: the ETS challenger is now out of sample (the
+  in-sample version reported the opposite, 0.394 vs 0.306; out of sample 0.504 vs 0.670); the
+  bootstrap records which side of the frontier an out-of-range resample falls on; weekly forecast
+  bands use single-week errors; recommendation text for SKUs with no forecast demand;
+  CRITICAL_STOCKOUT value booked as a loss; containers pack only BUY lines and top up no
+  low-confidence SKU; the Scenario simulator calls the plan's own code; one excess definition; the
+  app's WAPE skips mostly reconstructed weeks; the benchmark's episode end day and weekly table; the
+  week-by-week chart limited to headline SKUs.

@@ -52,3 +52,24 @@ def daily_sku_demand(clean: pd.DataFrame, trading_days: pd.DatetimeIndex, life: 
     out["description"] = out["sku"].map(desc)
     cols = ["date", "sku", "description", "units", "revenue", "average_price", "gross_units_sold", "returns", "net_units"]
     return out[cols].sort_values(["sku", "date"]).reset_index(drop=True)
+
+
+def window_daily(daily: pd.DataFrame, end: pd.Timestamp) -> pd.DataFrame:
+    """Daily demand up to `end`, zero-filled on trading days from each SKU's first sale to `end`.
+
+    Uses only rows dated on or before `end`, so a SKU that went quiet near the end of the window
+    looks the same whether or not it sold again later.
+    """
+    end = pd.Timestamp(end)
+    d = daily[daily["date"] <= end]
+    trading = pd.DatetimeIndex(sorted(d["date"].unique()))
+    first = d[d["units"] > 0].groupby("sku")["date"].min()
+    frames = [pd.DataFrame({"sku": sku, "date": trading[trading >= f]}) for sku, f in first.items()]
+    grid = pd.concat(frames, ignore_index=True)
+    out = grid.merge(d, on=["sku", "date"], how="left")
+    for col in ("units", "revenue", "gross_units_sold", "returns", "net_units"):
+        if col in out:
+            out[col] = out[col].fillna(0.0)
+    if "description" in out:
+        out["description"] = out["sku"].map(d.drop_duplicates("sku").set_index("sku")["description"])
+    return out.sort_values(["sku", "date"]).reset_index(drop=True)

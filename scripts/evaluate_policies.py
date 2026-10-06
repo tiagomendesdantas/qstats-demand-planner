@@ -26,6 +26,7 @@ import pandas as pd  # noqa: E402
 from qstats_planner.evaluation import calibration, comparison  # noqa: E402
 from qstats_planner.simulation import runner  # noqa: E402
 from qstats_planner.utils.config import load_config, resolve  # noqa: E402
+from qstats_planner.utils.parallel import default_workers  # noqa: E402
 
 _INP = None
 _CFG = None
@@ -67,7 +68,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--population", default="demo")
     ap.add_argument("--seeds", type=int, nargs="*")
-    ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--workers", type=int, default=default_workers(), help="default: min(8, CPUs, memory / 1.2 GB)")
     ap.add_argument("--variants", nargs="*")
     ap.add_argument("--scenario", default="base", choices=["base", "null", "optimistic_quotes"])
     args = ap.parse_args()
@@ -166,8 +167,17 @@ def main() -> int:
         out_of_range = float(b0["inventory_saving_pct"].isna().mean())
         for s_ in points:
             bs = b[b["seed"] == s_]
+            below = bs["legacy_fill"] < bs["qstats_lowest_fill"]
             points[s_]["bootstrap_out_of_range_primary"] = float(bs["inventory_saving_pct"].isna().mean())
+            # out of range because even QStats's lowest setting delivered more fill than Legacy-30 ...
+            points[s_]["bootstrap_out_of_range_primary_below"] = float(below.mean())
+            # ... and did so with no more inventory (QStats better on both counts)
+            points[s_]["bootstrap_out_of_range_primary_dominated"] = float(
+                (below & (bs["qstats_lowest_inventory"] <= bs["legacy_inventory"])).mean()
+            )
             points[s_]["bootstrap_out_of_range_secondary"] = float(bs["legacy_extra_inventory_pct"].isna().mean())
+            # out of range because QStats's fill is above the highest legacy setting's
+            points[s_]["bootstrap_out_of_range_secondary_above"] = float((bs["qstats_fill"] > bs["legacy_highest_fill"]).mean())
         (out / "matched.json").write_text(json.dumps(points, indent=2))
         print(
             f"\nprimary metric: inventory saving at Legacy-30's fill rate, seed {ref_seed}: "

@@ -86,6 +86,23 @@ def test_future_demand_does_not_change_past_decisions(cfg):
     assert np.array_equal(a.sales[: t + 1], b.sales[: t + 1])
 
 
+def test_future_demand_does_not_change_past_qstats_decisions(cfg, neutral_prior):
+    """The same scramble for the QStats planner (two-sided reconstruction, backtests, Kaplan-Meier)."""
+    from qstats_planner.simulation.policies.qstats import QStatsPlanner
+
+    t = 120
+    e1 = make_env(cfg, seed=3)
+    e2 = make_env(cfg, seed=3)
+    rng = np.random.default_rng(99)
+    e2.baseline[t + 1 :] = rng.permutation(e2.baseline[t + 1 :].ravel()).reshape(e2.baseline[t + 1 :].shape) * 3
+    a = Engine(e1, cfg).run(QStatsPlanner(cfg, neutral_prior))
+    b = Engine(e2, cfg).run(QStatsPlanner(cfg, neutral_prior))
+    pa = [(p["sku_idx"], p["qty"], p["order_day"]) for p in a.pos if p["order_day"] <= t]
+    pb = [(p["sku_idx"], p["qty"], p["order_day"]) for p in b.pos if p["order_day"] <= t]
+    assert pa and pa == pb
+    assert np.array_equal(a.sales[: t + 1], b.sales[: t + 1])
+
+
 def test_planner_view_hides_the_evaluation_layer(env, cfg):
     e = run(env, cfg, until=80)
     v = e.view()

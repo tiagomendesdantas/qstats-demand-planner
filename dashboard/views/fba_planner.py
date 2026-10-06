@@ -7,6 +7,7 @@ import data
 
 pal = theme.palette()
 k = data.kpis()
+cfg = data.cfg()
 f = data.table("fba")
 f["fba_enabled"] = f["fba_enabled"].astype(bool)
 prods = data.table("products")
@@ -23,7 +24,11 @@ theme.strip(
         ("FBA SKUs", f"{len(f)}", "enabled for Amazon"),
         ("Below target", f"{len(below)}", "position under the service-level quantity"),
         ("Units to send", theme.units(f["send_qty"].sum()), f"{int((f['send_qty'] > 0).sum())} shipments"),
-        ("Replenishment window", f"{k['transit_p90']:.0f} d", "pick + transit, P90 of past transfers"),
+        (
+            "Pick + transit (P90)",
+            f"{k['transit_p90']:.0f} d",
+            f"past transfers; the window adds the {cfg['simulation']['review_period_days']}-day review",
+        ),
         (
             "Units at Amazon",
             theme.units(f["fba_available"].sum() + f["fba_transfer"].sum() + f["fba_reserved"].sum()),
@@ -73,13 +78,18 @@ st.dataframe(
         ]
     }
     | {
-        "Days of supply": st.column_config.NumberColumn(format="%.0f"),
+        "Days of supply": st.column_config.NumberColumn(format="%.0f", help="Blank: no Amazon demand forecast"),
+        "Target": st.column_config.NumberColumn(format="%.0f"),
+        "Position": st.column_config.NumberColumn(format="%.0f"),
         "Forecast / day": st.column_config.NumberColumn(format="%.2f"),
         "Product": st.column_config.TextColumn(width="large"),
     },
 )
 theme.note(
-    "Target: the service-level quantile of Amazon demand over the replenishment window. Position: available + FC "
-    "transfer + inbound + units being picked at the DC + 0.5 × reserved. The source DC keeps a week of its own "
-    "expected demand before it sends."
+    "Target: the service-level quantile of Amazon demand over the replenishment window (pick + transit + review). "
+    "Position: available + FC transfer + inbound + units being picked at the DC + 0.5 × reserved. The source DC "
+    f"keeps {cfg['simulation']['dc_protection_days_for_fba']} days of its own expected demand before it sends. "
+    "When no Amazon demand is forecast, the target is the forecast-error allowance alone: errors are scaled by the "
+    "SKU's longer-run demand, so a SKU that sold on Amazon before keeps a small target. Sends that avoid less than "
+    "one unit of expected shortfall, or whose Amazon sales lose money, are marked LOW in the Action center."
 )

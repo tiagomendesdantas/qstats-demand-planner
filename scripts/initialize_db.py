@@ -17,7 +17,7 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
 from qstats_planner.domain import tables  # noqa: E402
-from qstats_planner.domain.locations import LOCATIONS  # noqa: E402
+from qstats_planner.domain.locations import FBA, LOCATIONS  # noqa: E402
 from qstats_planner.inventory import lead_time as ltmod  # noqa: E402
 from qstats_planner.simulation import runner  # noqa: E402
 from qstats_planner.utils.config import database_url, load_config, resolve  # noqa: E402
@@ -115,34 +115,49 @@ def main() -> int:
     meta = {
         k: json.loads((sim / f).read_text()) for k, f in (("matched", "matched.json"), ("run", "run.json")) if (sim / f).exists()
     }
-    pd.DataFrame([{"key": k, "value": json.dumps(v)} for k, v in meta.items()]).to_sql(
-        "eval_meta", eng_db, if_exists="replace", index=False
-    )
 
-    # both worlds, weekly network totals, for the comparison charts
+    # both worlds, weekly network totals over the headline SKUs (no simulated events), for the charts;
+    # and the Amazon channels that never sold after the fork, a blind spot for both planners
+    head = ~np.isin(np.arange(env.n_sku), env.event_skus)
+    fork = (cfg["simulation"]["fork_week"] - 1) * 7
+    fba_on = env.products["fba_enabled"].to_numpy(bool)
+    amazon = {}
     rows = []
     for name in (runner.LEGACY_REF, runner.QSTATS_REF):
         with open(sim / f"world_{name}_seed{cfg['random_seed']}.pkl", "rb") as fh:
             w = pickle.load(fh)["engine"]
+        sold_amz = w.sales[fork:, :, FBA].sum(axis=0)
+        demand_amz = env.baseline[fork:, :, FBA].sum(axis=0)
+        never = fba_on & (sold_amz == 0)
+        amazon[name] = {
+            "fba_enabled": int(fba_on.sum()),
+            "never_sold": int(never.sum()),
+            "never_sold_with_demand": int((never & (demand_amz > 0)).sum()),
+            "unserved_units": float(demand_amz[never].sum()),
+        }
         W = T // 7
 
         def r(a, W=W):
             return a[: W * 7].reshape(W, 7, *a.shape[1:]).sum(axis=1)
 
-        inv = np.nan_to_num(w.closing_on_hand[: W * 7]).sum(axis=2) * env.products["unit_cost"].to_numpy()
+        inv = (np.nan_to_num(w.closing_on_hand[: W * 7]).sum(axis=2) * env.products["unit_cost"].to_numpy())[:, head]
         rows.append(
             pd.DataFrame(
                 {
                     "world": name,
                     "week": days[: W * 7 : 7],
-                    "demand": r(env.baseline).sum(axis=(1, 2)),
-                    "sold": r(w.sales).sum(axis=(1, 2)),
-                    "lost": r(w.lost).sum(axis=(1, 2)),
+                    "demand": r(env.baseline)[:, head].sum(axis=(1, 2)),
+                    "sold": r(w.sales)[:, head].sum(axis=(1, 2)),
+                    "lost": r(w.lost)[:, head].sum(axis=(1, 2)),
                     "inventory_value": inv.reshape(W, 7, -1).sum(axis=2).mean(axis=1),
                 }
             )
         )
     pd.concat(rows).to_sql("eval_world_weekly", eng_db, if_exists="replace", index=False)
+    meta["amazon_never_sold"] = amazon
+    pd.DataFrame([{"key": k, "value": json.dumps(v)} for k, v in meta.items()]).to_sql(
+        "eval_meta", eng_db, if_exists="replace", index=False
+    )
     print(f"database ready: {url}")
     return 0
 

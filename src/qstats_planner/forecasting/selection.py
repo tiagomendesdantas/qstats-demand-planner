@@ -17,7 +17,7 @@ Rules (all thresholds in the config):
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -31,6 +31,7 @@ class Selection:
     reason: list[str]  # (n,) why
     segment_scores: pd.DataFrame  # segment x model scaled error
     sku_scores: np.ndarray  # (M, n) mean scaled error per SKU (NaN if unscored)
+    segment_champion: dict = field(default_factory=dict)  # segment -> model index, before SKU overrides
 
 
 def scaled_errors(forecast: np.ndarray, actual: np.ndarray, scored: np.ndarray, scale: np.ndarray) -> np.ndarray:
@@ -80,6 +81,7 @@ def select(
         pooled_pick = next(i for i, m in enumerate(models) if m.family == "ses")
     champion = np.full(n, pooled_pick)
     reason = [""] * n
+    seg_champion = {}
     for seg in np.unique(segments):
         idx = np.where(segments == seg)[0]
         s = pd.Series(seg_rows[seg])
@@ -87,11 +89,13 @@ def select(
         why = f"segment champion ({seg})"
         if pick < 0:
             pick, why = pooled_pick, f"too few scored windows in {seg}: all-SKU champion"
+        seg_champion[str(seg)] = pick
         champion[idx] = pick
         for i in idx:
             reason[i] = why
 
     # SKU override on non-overlapping windows
+    own_scores = np.full((M, n), np.nan)
     for i in range(n):
         h = max(int(horizon[i]), 1)
         blocks = err[:, ::h, i]
@@ -103,6 +107,7 @@ def select(
             if blocks.size
             else np.full(M, np.nan)
         )
+        own_scores[:, i] = own
         if np.all(np.isnan(own)) or np.isnan(own[champion[i]]):
             continue
         best = int(np.nanargmin(own))
@@ -110,20 +115,21 @@ def select(
             champion[i] = best
             reason[i] = f"SKU's own best on {int(nb[best])} non-overlapping windows"
 
-    # hysteresis against the incumbent
+    # hysteresis against the incumbent: compare on the SKU's own windows when both models are scored
+    # there (so an SKU override is not judged on segment scores it can never beat), else on segment
     if previous is not None:
         for i in range(n):
             p = previous[i]
             if p < 0 or p == champion[i]:
                 continue
-            seg_s = seg_scores.loc[segments[i]] if segments[i] in seg_scores.index else pooled
-            new, old = seg_s.iloc[champion[i]], seg_s.iloc[p]
+            own = own_scores[:, i]
+            if np.isfinite(own[champion[i]]) and np.isfinite(own[p]):
+                new, old, basis = own[champion[i]], own[p], "the SKU's own windows"
+            else:
+                seg_s = seg_scores.loc[segments[i]] if segments[i] in seg_scores.index else pooled
+                new, old, basis = seg_s.iloc[champion[i]], seg_s.iloc[p], "segment windows"
             if np.isfinite(old) and np.isfinite(new) and new > old * (1 - f["switch_margin"]):
                 champion[i] = p
-                reason[i] = (
-                    reason[i].replace("segment champion", "incumbent kept (switch margin not met)", 1)
-                    if "segment" in reason[i]
-                    else "incumbent kept (switch margin not met)"
-                )
+                reason[i] = f"incumbent kept (the new pick is not {f['switch_margin']:.0%} better on {basis})"
     del counts
-    return Selection(champion, reason, seg_scores, sku_mean)
+    return Selection(champion, reason, seg_scores, sku_mean, seg_champion)

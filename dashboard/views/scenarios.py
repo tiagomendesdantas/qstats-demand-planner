@@ -11,31 +11,39 @@ theme.title(
     "lead-time demand, safety stock, order quantities and containers are recomputed (about a second).",
 )
 
+sc = cfg["scenario"]
+classes = " / ".join(f"{c} {v:.0%}".rstrip("%") for c, v in cfg["products"]["service_level_by_class"].items())
+base_cap = float(cfg["suppliers"]["container"]["capacity_m3"])
+base_days = int(cfg["legacy"]["safety_days"])
 c1, c2, c3 = st.columns(3, gap="large")
 with c1:
-    sl = st.selectbox("Target service level", ["Product targets (A 97 / B 95 / C 90%)", "90%", "95%", "97%", "99%"])
-    growth = st.slider("Demand growth", -20, 30, 0, step=5, format="%d%%")
+    product_targets = f"Product targets ({classes}%)"
+    sl = st.selectbox("Target service level", [product_targets] + [f"{v:.0%}" for v in sc["service_levels"]])
+    lo, hi = sc["demand_growth_pct"]
+    growth = st.slider("Demand growth", lo, hi, 0, step=5, format="%d%%")
 with c2:
-    ltm = st.select_slider("Lead time", options=[0.8, 1.0, 1.2, 1.5], value=1.0, format_func=lambda v: f"× {v:.1f}")
+    ltm = st.select_slider(
+        "Lead time", options=sc["lead_time_multipliers"], value=1.0, format_func=lambda v: f"× {v:.1f}"
+    )
     var = st.select_slider(
-        "Supplier variability", options=[0.5, 1.0, 1.5, 2.0], value=1.0, format_func=lambda v: f"× {v:.1f} spread"
+        "Supplier variability", options=sc["variability_multipliers"], value=1.0, format_func=lambda v: f"× {v:.1f} spread"
     )
 with c3:
-    cap = st.number_input("Container capacity (m³)", 20.0, 80.0, 68.0, step=1.0)
+    cap = st.number_input("Container capacity (m³)", 20.0, 80.0, base_cap, step=1.0)
     pol = st.radio("Safety-stock policy", ["Probabilistic (QStats)", "Days of cover (legacy rule)"], horizontal=True)
-    days = st.slider("Days of cover", 7, 90, 30, disabled=pol.startswith("Prob"))
+    days = st.slider("Days of cover", 7, 90, base_days, disabled=pol.startswith("Prob"))
 
-svc = None if sl.startswith("Product") else int(sl.rstrip("%")) / 100
+svc = None if sl == product_targets else int(sl.rstrip("%")) / 100
 svc_obj = data.scenario_service()
 
 
 @st.cache_data(show_spinner="Re-planning…")
 def run(svc, growth, ltm, var, cap, prob, days):
-    r = svc_obj.run(svc, growth, ltm, var, cap, prob, days)
+    r = svc_obj.run(svc, growth, ltm, var, None if cap == base_cap else cap, prob, days)
     return r.summary, r.by_sku
 
 
-base, _ = run(None, 0, 1.0, 1.0, 68.0, True, 30)
+base, _ = run(None, 0, 1.0, 1.0, base_cap, True, base_days)
 scen, by = run(svc, growth, ltm, var, cap, pol.startswith("Prob"), days)
 
 lines = [
@@ -94,12 +102,13 @@ theme.section("Scenario vs this week's plan")
 st.dataframe(tbl, hide_index=True, width="stretch")
 theme.note(
     "Projected service level: demand-weighted probability of covering demand over lead time + review after the "
-    "recommended orders. SKUs at risk: projected to run out within 8 weeks. Working capital committed: stock on hand "
-    "plus the purchases this plan would commit to, at cost."
+    f"recommended orders. SKUs at risk: projected to run out within {cfg['inventory']['stockout_risk_weeks']} weeks. "
+    "Purchase lines include those awaiting review (low margin or low forecast confidence); containers pack only the "
+    "approved BUY lines. Working capital committed: stock on hand plus the purchases this plan would commit to, at cost."
 )
 
 theme.section("Largest purchase changes")
-bb = run(None, 0, 1.0, 1.0, 68.0, True, 30)[1]
+bb = run(None, 0, 1.0, 1.0, base_cap, True, base_days)[1]
 ch = by.merge(bb, on="sku", suffixes=("", "_base"))
 ch["change"] = ch["purchase_value"] - ch["purchase_value_base"]
 ch = ch[ch["change"].abs() > 0].sort_values("change", key=abs, ascending=False).head(15)

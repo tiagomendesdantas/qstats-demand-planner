@@ -19,7 +19,7 @@ def episode_table(
     sales: np.ndarray, adjusted: np.ndarray, baseline: np.ndarray, censored: np.ndarray, active: np.ndarray
 ) -> pd.DataFrame:
     """One row per censored episode (SKU x channel): observed, reconstructed and true totals."""
-    start, end = _episodes(censored, active)
+    start, _ = _episodes(censored, active)
     T, n, C = censored.shape
     rows = []
     ids = np.where(censored, start, -1)
@@ -33,7 +33,7 @@ def episode_table(
                         i,
                         c,
                         int(s),
-                        int(end[s, i, c]),
+                        int(np.flatnonzero(m)[-1]),  # the episode's last censored day
                         int(m.sum()),
                         float(sales[m, i, c].sum()),
                         float(adjusted[m, i, c].sum()),

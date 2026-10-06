@@ -16,7 +16,13 @@ from qstats_planner.demand.segmentation import assign_segments, segment_features
 from qstats_planner.forecasting.backtest import Backtest, run_backtest, weekly_metrics
 from qstats_planner.forecasting.models import ModelSpec, candidate_models, run_states, weekly_paths
 from qstats_planner.forecasting.selection import Selection, scaled_errors, select
-from qstats_planner.forecasting.uncertainty import REPRESENTATIVE, ErrorTable, build_error_table, recent_level
+from qstats_planner.forecasting.uncertainty import (
+    REPRESENTATIVE,
+    ErrorTable,
+    build_error_table,
+    build_weekly_error_table,
+    recent_level,
+)
 
 SELECTION_HORIZONS = (6, 8, 11, 14)
 
@@ -89,6 +95,7 @@ def fit(
             first_origin,
             horizons,
             f["max_imputed_share_in_scoring_window"],
+            tuple(REPRESENTATIVE.values()) if keep_backtest else (),
         )
         weeks_since = W - h.launch_week
         feat = segment_features(h.Y, h.valid, y_seas, weeks_since)
@@ -110,7 +117,13 @@ def fit(
         if previous is not None and [m.name for m in previous.models] != [m.name for m in models]:
             prev = None
         sel = select(models, err, segments, hsel, prev, cfg, f["min_origins_for_selection"])
-        errors = build_error_table(bt, sel.champion, segments, recent_level(h.Y, h.valid), f["min_errors_for_sku_quantiles"])
+        level = recent_level(h.Y, h.valid)
+        errors = build_error_table(bt, sel.champion, segments, level, f["min_errors_for_sku_quantiles"])
+        weekly_errors = (
+            build_weekly_error_table(bt, sel.champion, segments, level, f["min_errors_for_sku_quantiles"])
+            if keep_backtest
+            else None
+        )
     return ForecastState(
         models,
         sel,
@@ -119,7 +132,7 @@ def fit(
         feat,
         W - 1,
         bt if keep_backtest else None,
-        {"selection_error": err if keep_backtest else None, "selection_horizon": hsel},
+        {"selection_error": err if keep_backtest else None, "selection_horizon": hsel, "weekly_errors": weekly_errors},
     )
 
 

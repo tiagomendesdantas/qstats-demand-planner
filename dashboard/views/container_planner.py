@@ -7,12 +7,16 @@ import data
 pal = theme.palette()
 lines, summary = data.table("containers")
 prods = data.table("products").set_index("sku")
+sc = data.cfg()["suppliers"]
 
 theme.title(
     "Container planner",
-    "This week's purchase lines grouped by supplier into 40ft high-cube containers (68 m³). "
-    "An under-filled container is topped up with whole cases of that supplier's other SKUs, lowest cover first, "
-    "never past 26 weeks of cover and never for a low-margin or discontinued SKU.",
+    f"This week's BUY lines grouped by supplier into {sc['container']['name']} containers "
+    f"({sc['container']['capacity_m3']:.0f} m³). Lines awaiting review are not packed until approved. A container "
+    f"below the {sc['minimum_container_fill']:.0%} minimum fill is topped up to {sc['container_top_up_to']:.0%} with "
+    "whole cases of that supplier's other SKUs, lowest cover first, never past "
+    f"{sc['container_top_up_max_cover_weeks']} weeks of cover and never for a low-margin, discontinued or "
+    "low-confidence SKU.",
 )
 if summary.empty:
     theme.note("No purchase lines this week.")
@@ -21,11 +25,12 @@ if summary.empty:
 theme.strip(
     [
         ("Suppliers ordering", f"{len(summary)}", ""),
-        ("Containers", f"{int(summary['containers'].sum())}", "40ft high cube"),
+        ("Containers", f"{int(summary['containers'].sum())}", sc["container"]["name"]),
         (
             "Purchase value",
             theme.money(summary["purchase_value"].sum()),
-            f"{theme.money(summary['top_up_value'].sum())} of it top-up",
+            f"{theme.money(summary['top_up_value'].sum())} of it top-up; "
+            f"{theme.money(data.kpis()['purchase_value'] - summary['recommended_value'].sum())} more awaiting review",
         ),
         ("Mean utilisation", theme.pct(summary["utilisation"].mean(), 0), "cube used / capacity"),
         ("Below minimum fill", f"{int(summary['below_minimum_fill'].sum())}", "consolidate or wait"),

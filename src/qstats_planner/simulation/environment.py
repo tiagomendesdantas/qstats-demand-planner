@@ -398,7 +398,8 @@ def build_environment(
         for l_ in range(len(LOCATIONS)):
             for _ in range(urng.poisson(sim["unknown_availability_blocks_per_sku"] / len(LOCATIONS))):
                 s0 = int(urng.integers(warm_end, len(days) - 20))
-                unknown[s0 : s0 + int(urng.integers(*sim["unknown_availability_block_days"])), i, l_] = True
+                lo, hi = sim["unknown_availability_block_days"]
+                unknown[s0 : s0 + int(urng.integers(lo, hi + 1)), i, l_] = True
 
     frng = stream(ss, "fba")
     lo, hi = sim["fba_unavailable_share"]

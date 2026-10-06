@@ -7,7 +7,7 @@ import json
 from datetime import datetime
 
 import pandas as pd
-from sqlalchemy import insert, text, update
+from sqlalchemy import Boolean, insert, inspect, text, update
 
 from qstats_planner.domain import tables
 
@@ -15,10 +15,24 @@ from qstats_planner.domain import tables
 class Repository:
     def __init__(self, url: str):
         self.engine = tables.engine_for(url)
+        self._bools: set[str] | None = None
+
+    def _bool_columns(self) -> set[str]:
+        if self._bools is None:
+            insp = inspect(self.engine)
+            self._bools = {
+                c["name"] for t in insp.get_table_names() for c in insp.get_columns(t) if isinstance(c["type"], Boolean)
+            }
+        return self._bools
 
     def _q(self, sql: str, **params) -> pd.DataFrame:
         with self.engine.connect() as conn:
-            return pd.read_sql(text(sql), conn, params=params)
+            df = pd.read_sql(text(sql), conn, params=params)
+        # SQLite hands BOOLEAN columns back as 0/1 integers
+        for c in self._bool_columns().intersection(df.columns):
+            if df[c].dtype != bool and df[c].notna().all() and df[c].isin([0, 1]).all():
+                df[c] = df[c].astype(bool)
+        return df
 
     # ------------------------------------------------------------------ master data
     def products(self) -> pd.DataFrame:

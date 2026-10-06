@@ -22,8 +22,9 @@ calendar:
   # Future trading days are projected with the pattern seen in the data:
   # Saturdays closed, and a year-end shutdown.
   closed_weekdays: [5]          # Monday = 0
-  shutdown_start_month_day: [12, 23]
-  shutdown_end_month_day: [1, 3]
+  # The year-end shutdown as observed in the shifted history (28 Dec - 7 Jan and 27 Dec - 6 Jan).
+  shutdown_start_month_day: [12, 27]
+  shutdown_end_month_day: [1, 6]
 
 cleaning:
   merchandise_pattern: '^\d{5}[A-Z]{0,3}$'
@@ -162,13 +163,14 @@ reconstruction:
   methods: [no_adjustment, pre_post_velocity, local_profile, model_expectation, censored_gamma]
   unknown_zero_run_probability: 0.02
   # Chosen by scripts/tune_dev.py on the dev SKUs, before any demo SKU was scored. Rule: lowest
-  # two-sided episode MAE. local_profile 142.9 vs censored_gamma 150.2 (censored_gamma is less
-  # biased, -65 vs -86 units per episode; both are reported on the benchmark page).
-  planner_method: local_profile
+  # two-sided episode MAE. censored_gamma 116.8 vs local_profile 121.2 (third run, after the
+  # dispersion-floor fix and the year-one-only population; the first two runs chose local_profile,
+  # see docs/EVAL_PLAN.md change log).
+  planner_method: censored_gamma
   gamma_min_shape: 0.3
 
 inventory:
-  target_service_level: 0.95
+  # service targets are per product: products.service_level_by_class
   reserved_planning_weight: 0.5
   lead_time_min_receipts: 8
   lead_time_shrink_k: 8
@@ -176,7 +178,7 @@ inventory:
   stockout_risk_weeks: 8
 
 legacy:
-  ses_alpha: 0.2            # tuned on the dev SKUs by scripts/tune_dev.py (MAE 39.9 vs 41.5 / 40.3)
+  ses_alpha: 0.2            # tuned on the dev SKUs by scripts/tune_dev.py (MAE 38.7 vs 40.1 / 39.2)
   safety_days: 30
   fba_cover_days: 30
   fba_trigger_extra_days: 14
@@ -191,3 +193,4 @@ scenario:
   service_levels: [0.90, 0.95, 0.97, 0.99]
   demand_growth_pct: [-20, 30]
   lead_time_multipliers: [0.8, 1.0, 1.2, 1.5]
+  variability_multipliers: [0.5, 1.0, 1.5, 2.0]

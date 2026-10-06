@@ -62,7 +62,12 @@ reconstructed demand; the replenishment window = pick (2 days) + transit (empiri
 past transfers, shrunk toward the 5–12 day range) + review. Target = the service-level quantile of
 Amazon demand over that window; position = available + FC transfer + inbound + units being picked
 + 0.5 × reserved. The transfer comes from the preferred DC, keeping a week of that DC's own expected
-demand, then from the other DC.
+demand (`dc_protection_days_for_fba`), then from the other DC.
+
+When no Amazon demand is forecast (under one unit per hundred days), the target is the forecast-
+error allowance alone, because errors are scaled by the SKU's longer-run demand. Such a send, one
+that avoids less than one unit of expected shortfall, or one whose Amazon contribution per unit is
+negative is still listed but marked LOW, and its reason says why.
 
 ## Forward projection
 
@@ -81,29 +86,40 @@ same pipeline (`inventory/projection.expected_lost`), not from demand until a ne
 | CRITICAL_STOCKOUT | out of stock now, or projected out within 14 days and before an order placed today could arrive |
 | BUY | position below the order-up-to level |
 | EXPEDITE | projected out more than 7 days before an open PO's expected arrival |
-| TRANSFER | one DC under 2 weeks of cover while the other has over 8 |
+| TRANSFER | one DC under 2 weeks of cover while the other has over 8, and the moved quantity (whole cases) stays within 26 weeks of the receiving DC's demand |
 | SEND_TO_FBA | Amazon position below its target and a DC can spare the units |
-| EXCESS | more than 26 weeks of cover and over $500 beyond it |
+| EXCESS | stock + open orders beyond 26 weeks of forecast demand, over $500 beyond it (all of it when no demand is forecast) |
 | LOW_MARGIN | a BUY on a SKU whose contribution margin is under 15%: review, not buy |
 | REVIEW_FORECAST | a BUY with LOW forecast confidence |
 | STOCKOUT_CENSORED | over 20% of the last eight weeks' demand was reconstructed |
 
 Each carries WHAT (action, quantity, location), WHY (one sentence from the numbers), EVIDENCE (the
-inputs), EXPECTED EFFECT (cycle service before → after, or units short avoided) and CONFIDENCE.
+inputs), EXPECTED EFFECT (cycle service before → after, or units short avoided) and CONFIDENCE. A
+forecast under one unit per hundred days counts as no forecast demand: reasons say so instead of
+printing a ratio such as weeks of cover.
 
 ## Economic impact
 
 - Contribution protected by a purchase = (E[(D − position)⁺] − E[(D − position − order)⁺]) ×
   contribution per unit, over lead time + review.
-- Critical stockouts and expedites: expected lost units before relief × contribution per unit.
+- Expedites: expected lost units the pulled-forward PO would cover × contribution per unit.
+- Critical stockouts: expected lost units before an order placed today could land × contribution
+  per unit, booked as a negative value. It is a cost of the current position, like an EXCESS line's
+  carrying cost, not value an action protects; the Action center reports it apart from the total
+  protected, so a SKU with both a CRITICAL and an EXPEDITE line is not counted twice.
 - Transfers: cross-DC shipping avoided. Excess: yearly carrying cost at 24%.
 - Portfolio figures (inventory value, contribution at risk, excess value, service now and after the
-  plan) are in `economics/impact.py`. None is a hard-coded improvement.
+  plan) are in `economics/impact.py`. The excess KPI counts physical stock on hand beyond 26 weeks
+  of forecast demand; the EXCESS line counts stock and open orders, because delaying or cancelling
+  an order is one of its remedies. None is a hard-coded improvement.
 
 ## Containers
 
-Purchase lines are grouped by supplier into 40ft high-cube containers (68 m³). A container is
-topped up only when it is below the supplier's minimum fill (55%): to 65%, with whole cases of
-that supplier's other SKUs, lowest cover first, never past 16 weeks of cover and never for a
-low-margin or discontinued SKU. Filling a box for its own sake turns working capital into stock.
+BUY lines are grouped by supplier into 40ft high-cube containers (68 m³); lines awaiting review
+(LOW_MARGIN, REVIEW_FORECAST) are not packed until a person approves them. A container is topped up
+only when it is below the supplier's minimum fill (55%): to 65%, with whole cases of that
+supplier's other SKUs, lowest cover first, never past 16 weeks of cover (on hand + on order + this
+order) and never for a low-margin, discontinued or low-confidence SKU. Filling a box for its own
+sake turns working capital into stock. The Scenario simulator calls the same routine, so its base
+run shows the same containers as this page.
 The greedy solver sits behind `ContainerSolver`, so an OR-Tools or PuLP model can replace it.

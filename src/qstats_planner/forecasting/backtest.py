@@ -8,6 +8,8 @@ Two error views are kept:
     cumulative  total demand over the next h weeks, the quantity a replenishment decision rests
                 on (h = the SKU's protection interval: lead time + review period)
     weekly      each single week ahead, for the usual WAPE / MAE / RMSE / bias diagnostics
+    single      optionally, the single week h weeks ahead (h in `single_leads`), for the weekly
+                forecast bands shown with a plan
 
 Windows whose actuals are mostly reconstructed (imputed share above a threshold) are not scored,
 so the reconstruction method does not grade the forecast.
@@ -30,6 +32,9 @@ class Backtest:
     scored: dict[int, np.ndarray]  # h -> (W, n) bool: window complete, mostly observed, model available
     week1_forecast: np.ndarray  # (M, W, n) one-week-ahead forecast made at w for week w+1
     week1_actual: np.ndarray  # (W, n)
+    single_forecast: dict[int, np.ndarray] | None = None  # h -> (M, W, n) forecast made at w for week w+h
+    single_actual: dict[int, np.ndarray] | None = None  # h -> (W, n) units in week w+h
+    single_scored: dict[int, np.ndarray] | None = None  # h -> (W, n) bool
 
 
 def run_backtest(
@@ -43,11 +48,13 @@ def run_backtest(
     first_origin: np.ndarray,
     horizons: tuple[int, ...],
     max_imputed_share: float,
+    single_leads: tuple[int, ...] = (),
 ) -> Backtest:
     """Y (W, n) adjusted units; es_* (W, n) exposure x season for the same weeks."""
     M, W, n = states.level.shape
-    H = max(horizons)
+    H = max((*horizons, *single_leads))
     ps = phi_sums(states.phi, H)
+    single_f: dict[int, np.ndarray] = {}
     cum_f = np.zeros((M, W, n))
     out_f: dict[int, np.ndarray] = {}
     week1 = np.full((M, W, n), np.nan)
@@ -72,6 +79,8 @@ def run_backtest(
                 step[m] = np.maximum(rate, 0) * es
         if h == 1:
             week1 = step.copy()
+        if h in single_leads:
+            single_f[h] = step.copy()
         cum_f = cum_f + step
         if h in horizons:
             out_f[h] = cum_f.copy()
@@ -89,7 +98,18 @@ def run_backtest(
         out_a[h] = a
         out_s[h] = complete[:, None] & (w_idx[:, None] >= first_origin[None, :]) & (share <= max_imputed_share)
     week1_actual = np.concatenate([Y[1:], np.full((1, n), np.nan)], axis=0)
-    return Backtest(tuple(horizons), out_f, out_a, out_s, week1, week1_actual)
+    single_a, single_s = {}, {}
+    for h in single_leads:
+        a = np.concatenate([Y[h:], np.full((min(h, W), n), np.nan)], axis=0)[:W]
+        imp = np.concatenate([imputed_units[h:], np.full((min(h, W), n), np.nan)], axis=0)[:W]
+        share = np.where(a > 0, imp / np.maximum(a, 1e-9), 0.0)
+        single_a[h] = a
+        single_s[h] = (
+            ((w_idx + h) < W)[:, None] & (w_idx[:, None] >= first_origin[None, :]) & (share <= max_imputed_share)
+        )
+    if not single_leads:
+        single_f = single_a = single_s = None
+    return Backtest(tuple(horizons), out_f, out_a, out_s, week1, week1_actual, single_f, single_a, single_s)
 
 
 def weekly_metrics(fc: np.ndarray, actual: np.ndarray, mask: np.ndarray) -> dict:

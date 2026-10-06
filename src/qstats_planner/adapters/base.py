@@ -36,3 +36,10 @@ class SourceAdapter(ABC):
 
     def locations(self) -> pd.DataFrame | None:
         return None
+
+    def demand_observations(self) -> pd.DataFrame | None:
+        """Daily demand by SKU and location with availability, when the source records it."""
+        return None
+
+    def promotions(self) -> pd.DataFrame | None:
+        return None

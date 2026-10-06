@@ -45,7 +45,8 @@ def candidate_models(cfg: dict, with_prior: bool = True) -> list[ModelSpec]:
     out = list(base)
     if with_prior:
         out += [ModelSpec(m.name + "+prior", m.family, m.params, m.complexity + 1, True) for m in base]
-        out.append(ModelSpec("seasonal_naive", "snaive", (52,), 5, True))
+    # seasonal naive copies the same week last year and never uses the prior: it is in every set
+    out.append(ModelSpec("seasonal_naive", "snaive", (52,), 5, True))
     return out
 
 

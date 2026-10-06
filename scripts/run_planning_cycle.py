@@ -24,9 +24,9 @@ from qstats_planner.demand.reconstruction import STATUS_NAMES  # noqa: E402
 from qstats_planner.domain import tables  # noqa: E402
 from qstats_planner.economics.impact import portfolio_kpis  # noqa: E402
 from qstats_planner.forecasting import pipeline  # noqa: E402
-from qstats_planner.forecasting.challengers import ets_challenger  # noqa: E402
+from qstats_planner.forecasting.challengers import ets_challenger, truncate  # noqa: E402
 from qstats_planner.forecasting.uncertainty import recent_level  # noqa: E402
-from qstats_planner.optimization.containers import plan_containers  # noqa: E402
+from qstats_planner.optimization.containers import containers_for_plan  # noqa: E402
 from qstats_planner.replenishment import recommendations  # noqa: E402
 from qstats_planner.replenishment.policy import PlanSettings, run_cycle  # noqa: E402
 from qstats_planner.simulation import runner  # noqa: E402
@@ -48,8 +48,11 @@ def main() -> int:
         st = run_cycle(view, cfg, prior, PlanSettings(), keep_backtest=True)
         created = pd.Timestamp.now().floor("s")
         plan = recommendations.build(view, st, cfg, created)
-        diag = pipeline.diagnostics(st.history, st.forecast_state)
-        ets = ets_challenger(st.history, st.forecast_state)
+        diag = pipeline.diagnostics(st.history_backtest, st.forecast_state)
+        hb = st.history_backtest
+        protection = (np.array([d.quantile(0.5) for d in st.sku_lead_time]) + view.review_period_days) / 7.0
+        early = pipeline.fit(truncate(hb, 26), protection, cfg, True)
+        ets = ets_challenger(hb, st.forecast_state, early)
     prod = view.products
     n = view.n_sku
     sku = prod["sku"].to_numpy()
@@ -57,28 +60,17 @@ def main() -> int:
     recs = plan["recommendations"]
     sp = plan["sku_plan"].assign(sku=sku)
 
-    # containers from the purchase lines (BUY and CRITICAL with a quantity)
-    buy = recs[(recs["action"] == "BUY") & (recs["recommended_quantity"] > 0)]
-    buy = buy.drop_duplicates("sku_idx")[["sku_idx", "recommended_quantity"]]
-    cont, cont_sum = plan_containers(
-        buy,
-        prod,
-        view.suppliers,
-        sp["weeks_of_cover_after"].to_numpy(),
-        sp["weekly_demand"].to_numpy(),
-        ~sp["low_margin"].to_numpy(),
-        sp["discontinued"].to_numpy(),
-        cfg=cfg,
-    )
+    cont, cont_sum = containers_for_plan(plan, prod, view.suppliers, cfg)
 
-    # forecasts with intervals (single-week errors for each week ahead)
+    # weekly forecasts with intervals: errors of the single week h ahead, by segment and horizon bucket
     H = cfg["forecasting"]["forecast_horizon_weeks"]
     level = np.nan_to_num(recent_level(st.history.Y, st.history.valid)[-1])
+    weekly_errors = st.forecast_state.extra["weekly_errors"]
     fc_rows = []
     weeks = pd.date_range(plan_date, periods=H, freq="7D")
     for h in range(H):
         for i in range(n):
-            e = st.forecast_state.errors.errors(st.forecast_state.segments[i], 1)
+            e = weekly_errors.errors(st.forecast_state.segments[i], h + 1)
             q = np.quantile(np.maximum(st.weekly_fc[h, i] + level[i] * e, 0), [0.1, 0.5, 0.8, 0.9, 0.95])
             fc_rows.append((sku[i], weeks[h], h + 1, st.weekly_fc[h, i], *q))
     fcast = pd.DataFrame(fc_rows, columns=["sku", "week", "horizon", "expected", "p10", "p50", "p80", "p90", "p95"])
@@ -152,7 +144,9 @@ def main() -> int:
         west_available=p.available[:, 1],
     )
     fba["fba_daily_demand"] = st.daily_fc[:28].mean(axis=0) * st.fba_share
-    fba["fba_days_of_supply"] = (fba["fba_available"] + fba["fba_transfer"]) / fba["fba_daily_demand"].replace(0, np.nan)
+    fba["fba_days_of_supply"] = (fba["fba_available"] + fba["fba_transfer"]) / fba["fba_daily_demand"].where(
+        fba["fba_daily_demand"] >= recommendations.NO_DEMAND_DAILY
+    )
     tr = pd.DataFrame(st.fba.attrs["transfers"], columns=["sku_idx", "qty", "source"])
     fba["send_qty"] = fba["sku_idx"].map(tr.groupby("sku_idx")["qty"].sum()).fillna(0)
     fba["source_dc"] = fba["sku_idx"].map(tr.groupby("sku_idx")["source"].first().map({0: "EAST_DC", 1: "WEST_DC"}))
@@ -168,7 +162,10 @@ def main() -> int:
         runtime_seconds=round(time.time() - t0, 1),
         transit_p90=float(st.fba.attrs["transit_p90"]),
     )
-    seg_scores = st.forecast_state.selection.segment_scores.reset_index().rename(columns={"index": "segment"})
+    sel = st.forecast_state.selection
+    seg_scores = sel.segment_scores.reset_index().rename(columns={"index": "segment"})
+    names = [mm.name for mm in st.forecast_state.models]
+    seg_scores.insert(1, "champion", seg_scores["segment"].map(lambda g: names[sel.segment_champion[g]]))
     lt_rows = []
     for sid, dist in st.lead_times.items():
         lt_rows += [
@@ -203,10 +200,9 @@ def main() -> int:
     ):
         df.to_sql(name, db, if_exists="replace", index=False, chunksize=50000)
 
-    # the scenario simulator reuses the fitted champions and error tables, not the backtest itself
-    light = dataclasses.replace(
-        st.forecast_state, backtest=None, extra={"selection_horizon": st.forecast_state.extra["selection_horizon"]}
-    )
+    # the scenario simulator reuses the fitted champions, error tables and selection errors (which set
+    # forecast confidence, and with it which purchases go to review), not the backtest itself
+    light = dataclasses.replace(st.forecast_state, backtest=None)
     with open(sim / "plan_state.pkl", "wb") as fh:
         pickle.dump({"forecast_state": light, "kpis": kpis}, fh)
     counts = recs["action"].value_counts().to_dict()

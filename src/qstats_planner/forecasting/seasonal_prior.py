@@ -23,6 +23,9 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from qstats_planner.demand.daily import window_daily
+from qstats_planner.utils.text import has_keyword
+
 MID_MONTH_DOY = np.array([15, 46, 74, 105, 135, 166, 196, 227, 258, 288, 319, 349], dtype=float)
 
 
@@ -46,9 +49,11 @@ class SeasonalPrior:
         min_units: float = 100.0,
     ) -> SeasonalPrior:
         end = pd.Timestamp(start) + pd.Timedelta(weeks=weeks) - pd.Timedelta(days=1)
-        d = daily[(daily["date"] >= start) & (daily["date"] <= end) & ~daily["sku"].isin(exclude)]
-        span = d.groupby("sku")["date"].agg(["min", "max"])
-        const = span[(span["min"] <= start + pd.Timedelta(weeks=4)) & (span["max"] >= end - pd.Timedelta(days=6))].index
+        # constant panel from sales inside the window only: sold in its first and last four weeks
+        d = window_daily(daily[~daily["sku"].isin(exclude)], end)
+        d = d[d["date"] >= start]
+        sold = d[d["units"] > 0].groupby("sku")["date"].agg(["min", "max"])
+        const = sold[(sold["min"] <= start + pd.Timedelta(weeks=4)) & (sold["max"] >= end - pd.Timedelta(weeks=4))].index
         d = d[d["sku"].isin(const)]
         tot = d.groupby("sku")["units"].sum()
         d = d[d["sku"].isin(tot[tot >= min_units].index)]
@@ -63,7 +68,7 @@ class SeasonalPrior:
         xo = x[off] - x[off].mean()
         slope = ((logr[:, off] - logr[:, off].mean(axis=1, keepdims=True)) * xo).sum(axis=1) / (xo**2).sum()
         desc = daily.drop_duplicates("sku").set_index("sku")["description"]
-        is_seasonal = rate.index.map(lambda s: any(k in str(desc.get(s, "")) for k in keywords)).to_numpy(bool)
+        is_seasonal = rate.index.map(lambda s: has_keyword(desc.get(s, ""), keywords)).to_numpy(bool)
         # Christmas-type products build up from January to August: that is their season, not a
         # trend, so they are not de-trended.
         slope = np.where(is_seasonal, 0.0, slope)
@@ -84,7 +89,7 @@ class SeasonalPrior:
         return cls(monthly, np.zeros(0, int), info)
 
     def for_skus(self, descriptions: pd.Series, keywords: list[str]) -> SeasonalPrior:
-        grp = descriptions.map(lambda s: int(any(k in str(s) for k in keywords))).to_numpy()
+        grp = descriptions.map(lambda s: int(has_keyword(s, keywords))).to_numpy()
         return SeasonalPrior(self.monthly, grp, self.info)
 
     def neutral(self) -> SeasonalPrior:

@@ -16,9 +16,9 @@ recs = data.recommendations()
 prods = data.table("products")
 recs = recs.merge(prods[["sku", "supplier_id"]].rename(columns={"supplier_id": "_s"}), on="sku", how="left")
 plan = data.table("sku_plan")  # already carries the sku column
-recs = recs.merge(plan[["sku", "stock_now"]], on="sku", how="left")
+recs = recs.merge(plan[["sku", "on_hand"]], on="sku", how="left")
 
-f1, f2, f3, f4, f5, f6 = st.columns(6)
+f1, f2, f3, f4, f5, f6 = st.columns([2.4, 1, 1, 1, 1, 1])  # room for the four default severity chips
 sev = f1.multiselect("Severity", ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"], default=["CRITICAL", "HIGH", "MEDIUM", "LOW"])
 act = f2.multiselect("Action", sorted(recs["action"].unique()), placeholder="All actions")
 sup = f3.multiselect("Supplier", sorted(recs["supplier_id"].unique()), placeholder="All suppliers")
@@ -38,8 +38,15 @@ st.html(
         f"{theme.chip(s)} <span class='qs-chip'>{int(counts.get(s, 0))}</span>"
         for s in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
     )
-    + f" &nbsp;&nbsp; <span class='qs-note'>{len(view)} of {len(recs)} recommendations · "
-    f"impact {theme.money(view['economic_impact'].clip(lower=0).sum())} protected</span>"
+    + f" &nbsp;&nbsp; <span class='qs-note'>{len(view)} of {len(recs)} recommendations</span>"
+)
+_imp = lambda actions: view.loc[view["action"].isin(actions), "economic_impact"]  # noqa: E731
+theme.note(
+    f"Lines shown: {theme.money(_imp(['BUY', 'EXPEDITE', 'TRANSFER', 'SEND_TO_FBA']).clip(lower=0).sum())} of "
+    f"contribution protected or shipping avoided, plus "
+    f"{theme.money(_imp(['REVIEW_FORECAST', 'LOW_MARGIN']).clip(lower=0).sum())} on purchases awaiting review. "
+    f"CRITICAL lines: {theme.money(-_imp(['CRITICAL_STOCKOUT']).sum())} of contribution expected to be lost "
+    "before a new order could land (an EXPEDITE line, where one exists, is how part of it is recovered)."
 )
 
 tbl = pd.DataFrame(
@@ -52,7 +59,7 @@ tbl = pd.DataFrame(
         "Action": view["action"],
         "Quantity": view["recommended_quantity"],
         "Projected stockout": pd.to_datetime(view["stockout_date"]),
-        "On hand": view["stock_now"],
+        "On hand": view["on_hand"],
         "Inventory position": view["inventory_position"],
         "Confidence": view["confidence"],
         "Economic impact": view["economic_impact"],
@@ -81,23 +88,24 @@ event = st.dataframe(
         "Priority": st.column_config.NumberColumn(width="small"),
         "Quantity": st.column_config.NumberColumn(format="localized"),
         "Projected stockout": st.column_config.DateColumn(format="MMM D"),
-        "On hand": st.column_config.NumberColumn(
-            format="localized", help="Units in the network now: DCs, Amazon and in transit to Amazon (Amazon reserved at half)"
-        ),
+        "On hand": st.column_config.NumberColumn(format="localized", help="Physical units at both DCs and Amazon"),
         "Inventory position": st.column_config.NumberColumn(
             format="localized",
             help="On hand + in transit to Amazon + open purchase orders. A SKU can be out of stock with a large position.",
         ),
         "Economic impact": st.column_config.NumberColumn(
-            format="dollar", help="Expected contribution protected (or cost avoided); negative = carrying cost of excess"
+            format="dollar",
+            help="Contribution protected or cost avoided by the action. Negative: a cost of the current position "
+            "(expected loss before relief on CRITICAL lines, yearly carrying cost on EXCESS lines)",
         ),
         "Product": st.column_config.TextColumn(width="large"),
     },
 )
 theme.note(
     "Select a row to see the reasoning and record a decision. Economic impact: contribution expected to be protected "
-    "by the action (units short avoided × contribution per unit), shipping cost avoided for transfers, or the yearly "
-    "carrying cost of excess stock (negative)."
+    "by the action (units short avoided × contribution per unit), or shipping cost avoided for transfers. Negative "
+    "values are costs of the current position: contribution expected to be lost before relief (CRITICAL) or the "
+    "yearly carrying cost of excess stock."
 )
 
 rows = event.selection.rows if event and event.selection else []

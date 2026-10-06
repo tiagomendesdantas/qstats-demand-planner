@@ -14,6 +14,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from qstats_planner.demand.daily import window_daily
 from qstats_planner.demand.features import sku_metrics
 from qstats_planner.utils.rng import stream
 
@@ -67,12 +68,15 @@ def select_populations(daily: pd.DataFrame, life: pd.DataFrame, data_start: pd.T
     sel_end = pd.Timestamp(data_start) + pd.Timedelta(weeks=pop["selection_weeks"]) - pd.Timedelta(days=1)
     fork_start = pd.Timestamp(data_start) + pd.Timedelta(weeks=cfg["simulation"]["fork_week"] - 1)
 
-    m = sku_metrics(daily, cfg, end=sel_end)
+    # Everything below uses only data dated on or before the end of the selection window.
+    wd = window_daily(daily, sel_end)
+    m = sku_metrics(wd, cfg)
     life = life.set_index("sku")
-    first = m["sku"].map(life["first_seen_date"])
+    first = m["sku"].map(wd[wd["units"] > 0].groupby("sku")["date"].min())
     first_week = ((first - pd.Timestamp(data_start)).dt.days // 7 + 1).astype(int)
     latest_launch = pop["selection_weeks"] - pop["min_weeks_of_history_at_fork"]
-    alive_at_end = m["sku"].map(life["last_seen_date"]) > sel_end - pd.Timedelta(weeks=4)
+    last_sale = m["sku"].map(wd[wd["units"] > 0].groupby("sku")["date"].max())
+    alive_at_end = last_sale > sel_end - pd.Timedelta(weeks=4)  # sold in the window's last four weeks
     eligible = (m["total_units"] >= pop["min_units_in_selection_window"]) & (first_week <= latest_launch) & alive_at_end
     cand = m[eligible].copy()
     cand["profile"] = assign_profile(cand, first_week[eligible], cfg)

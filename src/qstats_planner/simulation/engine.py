@@ -12,7 +12,8 @@ Order of events within a day (tested in tests/test_engine.py):
     5. At the end of each Sunday, the policy plans: purchase orders and FBA transfers.
 
 Inventory is conserved: opening on hand + receipts + transfers in - transfers out - sales - write-
-offs = closing on hand, for every SKU, location and day.
+offs + cross-DC shipments in - cross-DC shipments out = closing on hand, for every SKU, location
+and day. Sales are recorded where the customer is; a cross-DC shipment leaves the other DC's stock.
 """
 
 from __future__ import annotations

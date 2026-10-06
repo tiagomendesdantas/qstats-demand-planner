@@ -70,7 +70,14 @@ else:
         rows = [
             ("Severity", theme.chip(top["severity"])),
             ("Expected effect", top["expected_effect"]),
-            ("Contribution protected", theme.money(top["economic_impact"])),
+            (
+                {
+                    "CRITICAL_STOCKOUT": "Expected loss before relief",
+                    "EXCESS": "Yearly carrying cost",
+                    "TRANSFER": "Shipping cost avoided",
+                }.get(top["action"], "Contribution protected"),
+                theme.money(abs(top["economic_impact"])),
+            ),
             ("Confidence", f"{top['confidence']} ({top['confidence_score']:.2f})"),
         ]
         if pd.notna(top["stockout_date"]):
@@ -161,8 +168,10 @@ fig.add_vline(x=pd.Timestamp(k["plan_date"]), line=dict(color=pal["rule"], width
 theme.show(fig)
 theme.note(
     "Reconstructed demand differs from sales only in weeks with stockouts (shaded): there the planner estimates what "
-    "would have sold. Intervals come from pooled backtest errors of the SKU's segment and were measured to run "
-    "narrow (see Forecast performance)."
+    "would have sold. Weekly intervals come from backtest errors of a single week at that distance ahead, pooled "
+    "over the SKU's segment. Week-to-week noise dominates this demand, so the band widens only a little with the "
+    "horizon (and narrows where the forecast falls toward zero). Its coverage is not measured separately; the "
+    "lead-time-demand quantiles that set orders were measured to run narrow (see Forecast performance)."
 )
 
 # ---------------------------------------------------------------- inventory
@@ -241,8 +250,9 @@ with a:
         theme.note("No purchase orders.")
 with b:
     theme.section("Forecast candidates (rolling-origin backtest)")
-    perf = data.table("forecast_performance", sku).sort_values("cum_scaled_error").head(8)
+    perf = data.table("forecast_performance", sku).sort_values("cum_scaled_error")
     perf["champion"] = perf["champion"].astype(bool)
+    perf = pd.concat([perf[perf["champion"]], perf[~perf["champion"]].head(7)])  # the champion always shows
     st.dataframe(
         perf[["model", "champion", "cum_scaled_error", "wape", "bias", "mae"]],
         hide_index=True,
@@ -254,4 +264,8 @@ with b:
             "mae": st.column_config.NumberColumn("MAE", format="%.1f"),
         },
     )
-    theme.note(f"Champion chosen per segment: {s['selection_reason']}.")
+    theme.note(
+        f"How this SKU's model was chosen: {s['selection_reason']}. Each segment gets a champion; a SKU keeps its "
+        "own pick only when it beats the segment's on enough of its own non-overlapping windows. The error shown "
+        "averages every scored window, overlapping ones included, so its ranking can differ from the choice."
+    )

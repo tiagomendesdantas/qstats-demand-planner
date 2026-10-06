@@ -12,14 +12,29 @@ sp = data.table("sku_plan")
 prods = data.table("products")
 sp = sp.merge(prods[["sku_idx", "category", "unit_cost"]], on="sku_idx")
 
+cfg = data.cfg()
+seed = cfg["random_seed"]
 risk = k["skus_at_stockout_risk"]
+risk_days = k["stockout_risk_weeks"] * 7
+so_new = sp["stockout_day_with_order"].to_numpy()
+helped = int(risk - ((so_new >= 0) & (so_new < risk_days)).sum())
+cal = data.eval_table("calibration").query("seed == @seed")
+p90 = float((cal["realised"] <= cal["q90"]).mean()) if len(cal) else float("nan")
+narrow = f" (optimistic: the model's P90 covered {theme.pct(p90, 0)} of outcomes in the replay)" if p90 < 0.88 else ""
 lede = (
     "QStats's plan for the business as the current process left it. "
-    f"{risk} of {k['skus_monitored']} SKUs run out within {k['stockout_risk_weeks']} weeks unless something changes. "
-    f"This week's plan buys {theme.money(k['purchase_value'])} across {k['purchase_lines']} purchase lines; by the plan's "
-    f"own model the demand-weighted chance of covering lead-time demand goes from {theme.pct(k['service_level_now'], 0)} to "
-    f"{theme.pct(k['service_level_after_plan'], 0)} (an upper bound: this model's intervals ran narrow in the replay). "
-    f"{theme.money(k['excess_inventory_value'])} sits beyond {k['excess_weeks_of_cover']} weeks of cover."
+    f"{risk} of {k['skus_monitored']} SKUs are projected to run out within {k['stockout_risk_weeks']} weeks; "
+    + (
+        f"this week's orders land in time for {helped} of them; for the rest, expediting or transfers are the levers. "
+        if helped
+        else "orders placed today land after all of them, so expediting and transfers are the levers there. "
+    )
+    + f"The plan has {k['purchase_lines']} purchase lines worth {theme.money(k['purchase_value'])}, "
+    f"{k['purchase_lines_for_review']} of them awaiting review. If all are approved, the plan's own estimate of the "
+    "demand-weighted chance of covering demand over lead time + review goes from "
+    f"{theme.pct(k['service_level_now'], 0)} to {theme.pct(k['service_level_after_plan'], 0)}{narrow}. "
+    f"{theme.money(k['excess_inventory_value'])} of stock on hand sits beyond {k['excess_weeks_of_cover']} weeks of "
+    "forecast demand."
 )
 theme.title("Executive overview", lede)
 
@@ -33,8 +48,8 @@ theme.strip(
             f"{theme.money(k['purchase_value'])} at cost · {k['purchase_lines_for_review']} to review",
         ),
         ("SKUs at stockout risk", f"{risk}", f"out within {k['stockout_risk_weeks']} weeks, no new order"),
-        ("Contribution at risk", theme.money(k["contribution_at_risk"]), "expected shortfall over lead time"),
-        ("Excess inventory", theme.money(k["excess_inventory_value"]), f"beyond {k['excess_weeks_of_cover']} weeks of cover"),
+        ("Contribution at risk", theme.money(k["contribution_at_risk"]), "expected shortfall, lead time + review"),
+        ("Excess inventory", theme.money(k["excess_inventory_value"]), f"on hand beyond {k['excess_weeks_of_cover']} weeks"),
         (
             "Modelled service",
             f"{theme.pct(k['service_level_now'], 0)} → {theme.pct(k['service_level_after_plan'], 0)}",
@@ -66,7 +81,7 @@ with left:
         showlegend=False,
     )
     fig.update_layout(hovermode="closest", bargap=0.35)
-    fig.update_xaxes(showgrid=True, gridcolor=pal["grid"], tickformat=",d")
+    fig.update_xaxes(showgrid=True, gridcolor=pal["grid"], tickformat=",d", range=[0, c.max() * 1.12])
     fig.update_yaxes(gridcolor="rgba(0,0,0,0)")
     theme.show(fig)
 
@@ -84,10 +99,11 @@ with right:
     fig.add_scatter(x=x, y=n1, name="With this week's plan", line=dict(color=pal["s1"], width=2), mode="lines")
     fig.update_yaxes(tickformat=",d", rangemode="tozero")
     theme.show(fig)
+    lt50 = data.table("suppliers")["lead_time_p50"] / 7
     theme.note(
         "Cumulative count of SKUs whose expected stock reaches zero by each week, if nothing is ordered after this "
-        "week's plan. Orders placed today arrive after the supplier's median lead time (6 to 10 weeks), so earlier "
-        "stockouts can only be helped by expediting or transfers."
+        f"week's plan. Orders placed today arrive after the supplier's median lead time ({lt50.min():.0f} to "
+        f"{lt50.max():.0f} weeks), so earlier stockouts can only be helped by expediting or transfers."
     )
 
 left, right = st.columns(2, gap="large")
@@ -108,7 +124,7 @@ with left:
         hovertemplate="%{y}: %{x} SKUs at risk<extra></extra>",
     )
     fig.update_layout(hovermode="closest", bargap=0.35)
-    fig.update_xaxes(showgrid=True, gridcolor=pal["grid"], tickformat=",d")
+    fig.update_xaxes(showgrid=True, gridcolor=pal["grid"], tickformat=",d", range=[0, max(g["at_risk"].max(), 1) * 1.3])
     theme.show(fig)
 
 with right:
@@ -127,19 +143,45 @@ with right:
         hovertemplate="%{y}: $%{x:,.0f}<extra></extra>",
     )
     fig.update_layout(hovermode="closest", bargap=0.35)
-    fig.update_xaxes(showgrid=True, gridcolor=pal["grid"], tickprefix="$")
+    fig.update_xaxes(showgrid=True, gridcolor=pal["grid"], tickprefix="$", range=[0, v.max() * 1.2])
     theme.show(fig)
 
 theme.section("How this plan compares with the current process")
-meta = data.eval_meta().get("matched", {})
-m = meta.get("42") or meta.get(42)
-if m:
-    theme.callout(
-        "In a controlled replay of the same business over the past year, QStats did <b>not</b> hold less inventory at the "
-        f"service level the current process delivers ({theme.pct(m['legacy_fill'], 1)} fill): it needed "
-        f"{abs(m['inventory_saving_pct']) * 100:.1f}% {'more' if m['inventory_saving_pct'] < 0 else 'less'} there, within "
-        f"noise. It ran the business at {theme.pct(m['qstats_fill'], 1)} fill, where the current rule would need "
-        f"{abs(m['legacy_extra_inventory_pct']) * 100:.1f}% more inventory than QStats; that is positive in all three "
-        "replicate worlds but not distinguishable from zero in any one. The current process with only a seasonal prior "
-        "added did as well or better in two of three worlds. Details on <b>Legacy vs QStats</b>."
-    )
+vd = data.verdicts()
+m = vd["m"]
+sav, extra = m["inventory_saving_pct"], m["legacy_extra_inventory_pct"]
+
+
+def more_less(v: float, positive: str, negative: str) -> str:
+    return f"{abs(v) * 100:.1f}% {positive if v > 0 else negative}"
+
+
+at_legacy = (
+    f"QStats needed {more_less(sav, 'less', 'more')} inventory there"
+    if np.isfinite(sav)
+    else "QStats's settings did not reach that fill rate"
+)
+top = vd["legacy_top"]
+at_qstats = (
+    f"QStats ran the business at {theme.pct(m['qstats_fill'], 1)} fill, where the current rule would need "
+    f"{more_less(extra, 'more', 'less')} inventory than QStats"
+    if np.isfinite(extra)
+    else f"QStats ran the business at {theme.pct(m['qstats_fill'], 1)} fill, above the "
+    f"{theme.pct(top['fill'], 1)} the current rule reached at its highest setting ({top['days']} days of safety "
+    f"stock), on {(1 - vd['qstats_inventory'] / top['inventory']) * 100:.1f}% less inventory than that setting"
+)
+others = vd["secondary_other_worlds"]
+replicates = (
+    " In the replicate worlds where it can be read, the current rule needed "
+    + " and ".join(more_less(v, "more", "less") for v in others)
+    + " inventory than QStats to reach QStats's fill."
+    if others
+    else ""
+)
+theme.callout(
+    f"In a controlled replay of the same business over the past year: <b>{vd['primary']}</b> At the current process's "
+    f"fill ({theme.pct(m['legacy_fill'], 1)}), {at_legacy}. <b>{vd['secondary']}</b> {at_qstats}.{replicates} "
+    "The current process with only a seasonal prior added did as well or better than full QStats in "
+    f"{vd['prior_wins']} of the {vd['prior_comparable']} worlds where both could be read. Details on "
+    "<b>Legacy vs QStats</b>."
+)

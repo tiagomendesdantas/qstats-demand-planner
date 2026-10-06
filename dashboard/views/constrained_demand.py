@@ -31,7 +31,7 @@ theme.strip(
     [
         ("Censored channel-days", theme.units(none["censored_days"]), f"{int(none['episodes']):,} stockout episodes"),
         ("True lost demand", theme.units(none["lost_units"]), "units the simulation hid"),
-        ("Recovered by the planner", theme.pct(c["recovery_pct"], 0), f"{chosen.replace('_', ' ')} method"),
+        ("Recovered by the planner", theme.pct(c["recovery_pct"], 0), f"{chosen.replace('_', ' ')}; net, see below"),
         ("Episode error", f"{c['episode_mae']:,.0f} u", f"vs {none['episode_mae']:,.0f} without adjustment"),
         ("Episode bias", f"{c['episode_bias']:+,.0f} u", "negative = still under-estimates"),
         ("On never-stocked channels", theme.pct(dark_units / none["lost_units"], 0), "of lost demand: invisible to every method"),
@@ -76,12 +76,21 @@ theme.callout(
     else f"The planner uses <b>{names[chosen]}</b>, chosen on 120 separate development SKUs by a rule fixed in advance; "
     "it is also the best method on these demo SKUs."
 )
+biases = retro.drop("no_adjustment")["episode_bias"]
+least = biases.abs().idxmin()
 theme.note(
-    "Every method still under-estimates: stockouts tend to start on high-demand days, and the clean days around an "
-    "episode are on average quieter than the days the shelf was empty. Only the censored-likelihood method uses the "
-    "fact that on a sold-out day demand was at least what sold, which is why it is the least biased. Daily error barely "
-    "moves: daily demand here is lumpy (most days nothing, some days a case or a wholesale order), so no estimate of "
-    "the expected value matches a single day; the planner consumes weekly totals."
+    (
+        "Every method still under-estimates: stockouts tend to start on high-demand days, and the clean days around "
+        "an episode are on average quieter than the days the shelf was empty. "
+        if (biases < 0).all()
+        else "The methods do not all err in the same direction. "
+    )
+    + "Only the censored-likelihood method uses the fact that on a sold-out day demand was at least what sold"
+    + ("; it is the least biased here. " if least == "censored_gamma" else f"; the least biased here is {names[least]}. ")
+    + "Recovered = (reconstructed − sold) on censored days ÷ true lost units: a net figure, in which over- and "
+    "under-estimates on different days offset; episode error measures accuracy. Daily error barely moves: daily "
+    "demand here is lumpy (most days nothing, some days a case or a wholesale order), so no estimate of the expected "
+    "value matches a single day; the planner consumes weekly totals."
 )
 
 theme.section("One SKU: true demand, sales and reconstruction")

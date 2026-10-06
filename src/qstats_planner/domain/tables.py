@@ -1,8 +1,12 @@
 """Database schema (SQLAlchemy Core, portable types only).
 
 Nothing here is SQLite-specific: pointing `paths.database_url` at PostgreSQL or Azure SQL
-(`postgresql+psycopg://...`, `mssql+pyodbc://...`) creates the same tables. Operational tables
-mirror the canonical contract; `plan_*` tables hold the output of a planning cycle; `eval_*`
+(`postgresql+psycopg://...`, `mssql+pyodbc://...`) should create the same tables once the driver
+is installed (only SQLite has been run). Operational tables are derived from the canonical
+contract but are not identical to it: inventory snapshots carry sales and receipts instead of
+the reserved / inbound / transfer split, demand observations are by channel with the
+reconstructed units, and purchase orders carry the DC split instead of one location. A client
+load maps the contract tables onto these. `plan_*` tables hold the output of a planning cycle; `eval_*`
 tables hold the simulation's evaluation layer (baseline demand, benchmark scores) and are read only
 by the evaluation pages, never by the planner.
 """

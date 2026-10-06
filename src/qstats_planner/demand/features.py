@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from qstats_planner.utils.calendar import week_start
+from qstats_planner.utils.text import has_keyword
 
 
 def week_index(dates: pd.Series | pd.DatetimeIndex, origin: pd.Timestamp) -> np.ndarray:
@@ -89,7 +90,7 @@ def sku_metrics(daily: pd.DataFrame, cfg: dict, start=None, end=None) -> pd.Data
                 "coefficient_of_variation": float(units.std() / units.mean()) if units.mean() > 0 else np.nan,
                 "trend_strength": trend_strength(rate[off_peak]),
                 "peak_ratio": peak_ratio(w["week"], rate),
-                "seasonal_keyword": any(k in str(desc.get(sku, "")) for k in keywords),
+                "seasonal_keyword": has_keyword(desc.get(sku, ""), keywords),
             }
         )
     out = pd.DataFrame(rows)

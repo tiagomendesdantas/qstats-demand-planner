@@ -1,9 +1,13 @@
 # QStats Demand & Inventory Planner
 #   make demo      acquire data -> clean -> sample -> simulate -> database -> plan -> open the app
 #   make test      run the test suite
+#   make demo WORKERS=4   fewer parallel simulated worlds (each takes about 1 GB of memory)
 PY := uv run python
+WORKERS ?=
 
 .PHONY: install data population simulate db plan app api demo test lint requirements clean
+# the pipeline steps depend on each other in the order listed under `demo`
+.NOTPARALLEL:
 
 install:
 	uv sync
@@ -16,7 +20,7 @@ population:
 	$(PY) scripts/build_demo_population.py
 
 simulate:
-	$(PY) scripts/simulate_supply_chain.py
+	$(PY) scripts/simulate_supply_chain.py $(if $(WORKERS),--workers $(WORKERS))
 
 db:
 	$(PY) scripts/initialize_db.py

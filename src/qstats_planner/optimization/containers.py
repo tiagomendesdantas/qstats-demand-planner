@@ -3,9 +3,10 @@
 MVP solver: a transparent greedy heuristic.
     1. Place every recommended line (whole cases).
     2. Only if the last container is below the supplier's minimum fill, top it up to `top_up_to`
-       with extra cases of that supplier's SKUs, lowest weeks of cover first, skipping low-margin
-       and discontinued SKUs and never taking a SKU above `max_cover_weeks` of cover. Filling a box
-       for its own sake converts working capital into stock, so the top-up stops at the minimum.
+       with extra cases of that supplier's SKUs, lowest weeks of cover first, skipping low-margin,
+       discontinued and low-confidence SKUs and never taking a SKU above `max_cover_weeks` of cover
+       (on hand + on order + this order). Filling a box for its own sake converts working capital
+       into stock, so the top-up stops at the minimum.
     3. Report utilisation, unused capacity and purchase value per container.
 
 `ContainerSolver` is the seam: an OR-Tools / PuLP / scipy.optimize model (maximise the value of
@@ -93,18 +94,35 @@ class GreedyContainerSolver:
         return out
 
 
+def containers_for_plan(plan: dict, products: pd.DataFrame, suppliers: pd.DataFrame, cfg: dict):
+    """The container plan for a planning cycle's output (`recommendations.build`): only BUY lines
+    are packed (lines routed to review are not bought until a person approves them), and a SKU can
+    take top-up cases only if it is not low-margin, discontinued or low-confidence."""
+    recs, sp = plan["recommendations"], plan["sku_plan"]
+    buy = recs[(recs["action"] == "BUY") & (recs["recommended_quantity"] > 0)].drop_duplicates("sku_idx")
+    top_up_ok = ~sp["low_margin"].to_numpy(bool) & ~sp["discontinued"].to_numpy(bool) & (sp["confidence"] != "LOW").to_numpy()
+    return plan_containers(
+        buy[["sku_idx", "recommended_quantity"]],
+        products,
+        suppliers,
+        sp["weeks_of_cover_after"].to_numpy(),
+        sp["weekly_demand"].to_numpy(),
+        top_up_ok,
+        cfg=cfg,
+    )
+
+
 def plan_containers(
     recs: pd.DataFrame,
     products: pd.DataFrame,
     suppliers: pd.DataFrame,
     cover_after: np.ndarray,
     weekly_demand: np.ndarray,
-    margin_ok: np.ndarray,
-    discontinued: np.ndarray,
+    top_up_ok: np.ndarray,
     solver: ContainerSolver | None = None,
     cfg: dict | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """recs: one row per SKU with a purchase quantity (BUY lines)."""
+    """recs: one row per SKU with a purchase quantity. top_up_ok: SKUs that may take top-up cases."""
     if solver is None:
         sc = (cfg or {}).get("suppliers", {})
         solver = GreedyContainerSolver(sc.get("container_top_up_to", 0.65), sc.get("container_top_up_max_cover_weeks", 16))
@@ -122,7 +140,7 @@ def plan_containers(
                 float(p["unit_cost"]),
                 float(cover_after[i]),
                 float(weekly_demand[i]),
-                bool(margin_ok[i] and not discontinued[i]),
+                bool(top_up_ok[i]),
             )
         )
     plans, summary = [], []

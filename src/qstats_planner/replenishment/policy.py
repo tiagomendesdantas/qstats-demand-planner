@@ -25,7 +25,7 @@ from qstats_planner.forecasting import pipeline
 from qstats_planner.forecasting.pipeline import ForecastState, History
 from qstats_planner.forecasting.uncertainty import recent_level
 from qstats_planner.inventory import lead_time as ltmod
-from qstats_planner.inventory.lead_time_demand import LTDResult, lead_time_demand
+from qstats_planner.inventory.lead_time_demand import LTDResult, cumulative_forecast, lead_time_demand
 from qstats_planner.replenishment.common import dc_east_share, network_position, weekly
 from qstats_planner.replenishment.order_quantity import round_orders, round_up_to_pack, split_by_share
 
@@ -34,6 +34,9 @@ from qstats_planner.replenishment.order_quantity import round_orders, round_up_t
 class PlanSettings:
     uncensor: bool = True
     seasonal: bool = True
+    # off: the legacy safety rule (`safety_days` of point-forecast demand over the quoted lead time
+    # + review), RESERVED Amazon units counted in full (weight 1.0) and the legacy days-of-cover FBA
+    # rule. These three travel together in the ablation arm.
     probabilistic: bool = True
     service_level: float | None = None  # None: each product's own target
     demand_multiplier: float = 1.0  # scenario: demand growth
@@ -63,6 +66,7 @@ class PlanState:
     west_qty: np.ndarray
     fba: pd.DataFrame
     fba_share: np.ndarray
+    history_backtest: History | None = None  # real-time (one-sided) history the backtest was fitted on
 
 
 def build_history(view, recon, prior, settings: PlanSettings) -> History:
@@ -118,6 +122,22 @@ def run_cycle(
         gamma_min_shape=rc["gamma_min_shape"],
     )
     hist = build_history(view, recon, prior, settings)
+    hist_bt = None
+    if refit or previous is None:
+        # Model selection and error tables are fitted on a real-time (one-sided) reconstruction,
+        # so a backtest forecast from week w never uses days after w; the live forecast below
+        # uses the two-sided reconstruction, which is legitimate as of the plan date.
+        recon_rt = reconstruct(
+            cd,
+            rc["planner_method"] if settings.uncensor else "no_adjustment",
+            view.days.dayofweek.to_numpy(),
+            two_sided=False,
+            window=rc["window_trading_days"],
+            min_clean=rc["min_clean_days"],
+            unknown_zero_run_p=rc["unknown_zero_run_probability"],
+            gamma_min_shape=rc["gamma_min_shape"],
+        )
+        hist_bt = build_history(view, recon_rt, prior, settings)
 
     # 2. lead times
     quoted = prod["supplier_idx"].map(view.suppliers["quoted_lead_time_days"]).to_numpy(float)
@@ -133,7 +153,7 @@ def run_cycle(
 
     # 3. forecast
     if refit or previous is None:
-        fs = pipeline.fit(hist, protection_weeks, cfg, settings.seasonal, previous, keep_backtest)
+        fs = pipeline.fit(hist_bt, protection_weeks, cfg, settings.seasonal, previous, keep_backtest)
     else:
         fs = previous
     H = fc["forecast_horizon_weeks"]
@@ -154,8 +174,12 @@ def run_cycle(
     if settings.probabilistic:
         target = ltd.target
     else:
-        mean_daily = daily_fc[: int(quoted.max()) + R].mean(axis=0)
-        target = ltd.mean + settings.safety_days * mean_daily
+        # the legacy formula on the QStats forecast: point forecast over quote + review, plus
+        # `safety_days` of average forecast demand over that window
+        horizon = (quoted + R).astype(int)
+        cs = cumulative_forecast(daily_fc, np.arange(daily_fc.shape[0] + 1))
+        point = cs[np.clip(horizon, 0, daily_fc.shape[0]), np.arange(n)]
+        target = point + settings.safety_days * point / np.maximum(horizon, 1)
 
     # 5. position and order
     position = network_position(view, reserved_weight=inv["reserved_planning_weight"] if settings.probabilistic else 1.0)
@@ -188,6 +212,7 @@ def run_cycle(
         west,
         fba,
         fba_share,
+        hist_bt,
     )
 
 
@@ -242,8 +267,9 @@ def _fba_plan(view, cfg, recon, daily_fc, fs, alpha, settings: PlanSettings, pre
         fba_pos = p.on_hand[:, FBA] + p.fba_inbound + p.dc_committed.sum(axis=1)
     send = np.where(fba_on & view.launched, np.maximum(target - fba_pos, 0), 0)
     send = round_up_to_pack(send, prod["case_pack"].to_numpy())
-    # source: preferred DC, keeping a week of its own expected direct demand; then the other DC
-    direct_week = daily_fc[:7].sum(axis=0) * (1 - share)
+    # source: preferred DC, keeping `dc_protection_days_for_fba` of its own expected direct demand;
+    # then the other DC
+    direct_week = daily_fc[: sim["dc_protection_days_for_fba"]].sum(axis=0) * (1 - share)
     east_share = dc_east_share(weekly(view.sales, view.t), pref_east)
     keep = np.stack([direct_week * east_share, direct_week * (1 - east_share)], axis=1)
     avail = np.maximum(p.available[:, [EAST, WEST]] - keep, 0)

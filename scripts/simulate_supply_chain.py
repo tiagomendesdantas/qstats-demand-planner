@@ -3,6 +3,7 @@ constrained-demand benchmark.
 
     python scripts/simulate_supply_chain.py            # demo population, all seeds + scenarios
     python scripts/simulate_supply_chain.py --quick    # reference seed only (faster)
+    python scripts/simulate_supply_chain.py --workers 4  # fewer parallel worlds (about 1 GB each)
 
 The policy comparison itself lives in scripts/evaluate_policies.py (see docs/EVAL_PLAN.md).
 """
@@ -26,6 +27,7 @@ from qstats_planner.demand import reconstruction as R  # noqa: E402
 from qstats_planner.evaluation.benchmark import episode_table, score  # noqa: E402
 from qstats_planner.simulation import runner  # noqa: E402
 from qstats_planner.utils.config import load_config, resolve  # noqa: E402
+from qstats_planner.utils.parallel import default_workers  # noqa: E402
 
 
 def benchmark(cfg: dict) -> None:
@@ -94,13 +96,15 @@ def benchmark(cfg: dict) -> None:
             "baseline": wk(truth[:, :, c]),
             "observed": wk(cd.sales[:, :, c]),
             "censored_days": wk(cen[:, :, c].astype(float)),
+            "active_days": wk(cd.active[:, :, c].astype(float)),
         }
         base.update({m: wk(recs[m][:, :, c]) for m in recs if m != "no_adjustment"})
         idx = pd.MultiIndex.from_product([env.days[: W * 7 : 7], env.products["sku"]], names=["week", "sku"])
         df = pd.DataFrame({k: v.ravel() for k, v in base.items()}, index=idx).reset_index()
         df["channel"] = name
         df["stocked"] = df["sku"].map(dict(zip(env.products["sku"], stocked[:, c], strict=True)))
-        frames.append(df[(df["baseline"] > 0) | (df["observed"] > 0)])
+        # every week of the SKU-channel's active life, zero weeks included, so charts do not bridge gaps
+        frames.append(df[(df["active_days"] > 0) | (df["baseline"] > 0) | (df["observed"] > 0)])
     pd.concat(frames, ignore_index=True).to_parquet(bdir / "weekly.parquet", index=False)
     print(
         "benchmark:",
@@ -114,9 +118,11 @@ def benchmark(cfg: dict) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--quick", action="store_true")
+    ap.add_argument("--workers", type=int, default=default_workers())
     args = ap.parse_args()
     cfg = load_config()
     py = [sys.executable, str(ROOT / "scripts" / "evaluate_policies.py"), "--population", "demo"]
+    py += ["--workers", str(args.workers)]
     seeds = ["--seeds", str(cfg["random_seed"])] if args.quick else []
     subprocess.run(py + seeds, check=True)
     for sc in ("null", "optimistic_quotes"):

@@ -4,6 +4,7 @@ import streamlit as st
 import theme
 
 import data
+from qstats_planner.replenishment.recommendations import NO_DEMAND_DAILY
 
 pal = theme.palette()
 k = data.kpis()
@@ -11,7 +12,7 @@ sp = data.table("sku_plan")
 prods = data.table("products")
 sups = data.table("suppliers")
 d = sp.merge(prods[["sku_idx", "description", "category", "supplier_id", "unit_cost"]], on="sku_idx")
-d["value"] = d["stock_now"] * d["unit_cost"]
+d["value"] = d["on_hand"] * d["unit_cost"]  # the Inventory value tile, SKU by SKU
 cover = d["weeks_of_cover"].replace(np.inf, np.nan)
 
 theme.title("Inventory health", "Where the money sits, how long it lasts, and which suppliers the plan depends on.")
@@ -20,7 +21,7 @@ theme.strip(
         ("Inventory value", theme.money(k["inventory_value"]), "on hand, all locations, at cost"),
         ("Median cover", f"{np.nanmedian(cover):.1f} wk", "on hand + on order / forecast"),
         ("Projected stockouts", f"{k['skus_at_stockout_risk']}", f"within {k['stockout_risk_weeks']} weeks, no new order"),
-        ("Excess", theme.money(k["excess_inventory_value"]), f"beyond {k['excess_weeks_of_cover']} weeks of cover"),
+        ("Excess", theme.money(k["excess_inventory_value"]), f"on hand beyond {k['excess_weeks_of_cover']} weeks of forecast"),
         ("Inventory turns", f"{k['inventory_turns']:.1f}", "trailing 13 weeks, annualised"),
         (
             "Open POs",
@@ -55,13 +56,15 @@ with a:
     )
     fig.update_layout(hovermode="closest", bargap=0.3)
     fig.update_xaxes(title=dict(text="weeks of cover (on hand + on order)"))
-    fig.update_yaxes(tickformat=",d")
+    fig.update_yaxes(tickformat=",d", range=[0, max(c.max(), 1) * 1.15])
     theme.show(fig)
+    q = sups["quoted_lead_time_days"]
     theme.note(
-        "Blue: under 13 weeks (shorter than most supplier lead times). Green: 13–26. Amber: over 26 weeks, flagged as excess."
+        f"Blue: under 13 weeks. Green: 13–26. Amber: over {k['excess_weeks_of_cover']} weeks, the excess ceiling. "
+        f"Quoted supplier lead times run {q.min():.0f}–{q.max():.0f} days. SKUs with no forecast demand count as 52+."
     )
 with b:
-    theme.section("Inventory value by weeks of cover")
+    theme.section("Inventory value on hand, by weeks of cover")
     v = (
         d.assign(band=pd.cut(cover.fillna(999), bins, labels=labels, right=False))
         .groupby("band", observed=False)["value"]
@@ -80,7 +83,7 @@ with b:
         hovertemplate="%{x}: $%{y:,.0f}<extra></extra>",
     )
     fig.update_layout(hovermode="closest", bargap=0.3)
-    fig.update_yaxes(tickprefix="$")
+    fig.update_yaxes(tickprefix="$", range=[0, max(v.max(), 1) * 1.15])
     theme.show(fig)
 
 theme.section("Supplier exposure")
@@ -117,17 +120,16 @@ theme.note(
 )
 
 theme.section("Largest excess positions")
-ex2 = d[np.isfinite(d["weeks_of_cover"]) & (d["weeks_of_cover"] > k["excess_weeks_of_cover"])].copy()
-ex2["excess_value"] = (ex2["stock_now"] + ex2["on_order"] - k["excess_weeks_of_cover"] * ex2["weekly_demand"]) * ex2["unit_cost"]
-ex2 = ex2.sort_values("excess_value", ascending=False).head(15)
+ex2 = d[d["excess_value"] > 0].sort_values("excess_value", ascending=False).head(15)
 st.dataframe(
     pd.DataFrame(
         {
             "SKU": ex2["sku"],
             "Product": ex2["description"].str.title(),
             "Category": ex2["category"],
-            "Weeks of cover": ex2["weeks_of_cover"],
+            "On hand": ex2["on_hand"],
             "Weekly demand": ex2["weekly_demand"],
+            "Weeks on hand": ex2["on_hand"] / ex2["weekly_demand"].where(ex2["weekly_demand"] >= 7 * NO_DEMAND_DAILY),
             "Excess value": ex2["excess_value"],
             "Discontinued": ex2["discontinued"],
         }
@@ -135,8 +137,14 @@ st.dataframe(
     hide_index=True,
     width="stretch",
     column_config={
-        "Weeks of cover": st.column_config.NumberColumn(format="%.0f"),
-        "Weekly demand": st.column_config.NumberColumn(format="%.1f"),
+        "On hand": st.column_config.NumberColumn(format="localized"),
+        "Weekly demand": st.column_config.NumberColumn("Weekly forecast", format="%.1f"),
+        "Weeks on hand": st.column_config.NumberColumn(format="%.0f", help="Blank: no forecast demand"),
         "Excess value": st.column_config.NumberColumn(format="dollar"),
     },
+)
+theme.note(
+    f"Excess: units on hand beyond {k['excess_weeks_of_cover']} weeks of forecast demand, at cost; the Excess tile is "
+    "this column summed over every SKU. Open orders are not counted here. The Action center's EXCESS lines do "
+    "count them, because delaying or cancelling an order is one of the remedies."
 )

@@ -58,3 +58,9 @@ class CSVClientAdapter(SourceAdapter):
 
     def locations(self) -> pd.DataFrame | None:
         return self._table("locations")
+
+    def demand_observations(self) -> pd.DataFrame | None:
+        return self._table("demand_observations")
+
+    def promotions(self) -> pd.DataFrame | None:
+        return self._table("promotions")

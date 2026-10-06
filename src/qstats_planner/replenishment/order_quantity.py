@@ -43,7 +43,7 @@ def split_by_share(
     rest = cases - east_cases
     # the rounding remainder (at most one case) goes to the preferred DC
     frac = cases * np.clip(east_share, 0, 1) - east_cases
-    move = (frac >= 0.5) | ((frac > 0) & preferred_east)
+    move = (frac > 0) & preferred_east
     east_cases = east_cases + (move & (rest > 0)).astype(int)
     east = east_cases * case_pack
     return east, qty - east

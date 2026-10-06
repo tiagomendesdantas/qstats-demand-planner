@@ -1,8 +1,12 @@
 # Moving from the demo data to a client's systems
 
 The forecasting and planning code reads canonical tables and a `PlannerView`; it does not import the
-simulation (a test enforces this). Moving to a client's data means writing adapters and one
-constructor, not changing the planner. This page separates what exists from what does not yet.
+simulation (a test enforces this). For a network of two DCs plus Amazon FBA, moving to a client's
+data means writing adapters and one constructor, not changing the planner. Any other network shape
+(one DC, three DCs, a 3PL, stores, no Amazon) needs the location handling generalised first: the
+planner indexes EAST_DC, WEST_DC and AMAZON_FBA by position (`domain/locations.py`), reconstruction
+pools the two DCs into one direct channel, transfers compare exactly two DCs, and the FBA logic
+assumes one Amazon location. This page separates what exists from what does not yet.
 
 ## The data contract (`domain/contract.py`)
 
@@ -22,14 +26,17 @@ constructor, not changing the planner. This page separates what exists from what
 ## What exists
 
 - **Adapters.** `adapters/uci.py` (the demo source) and `adapters/csv_client.py`: a client exports
-  the tables above as CSV with the canonical column names and the adapter reads and validates them.
+  the tables above as CSV with the canonical column names and the adapter reads and validates them
+  (every table in the contract, promotions and demand observations included).
   The test in `tests/test_contract_and_api.py` runs client sales lines through the same cleaning
   rules as the UCI data.
 - **Planner.** Reconstruction, forecasting, lead times, safety stock, order quantities, FBA logic,
   recommendations, API and dashboard all run on canonical inputs.
 - **Database.** SQLAlchemy Core with portable types (`domain/tables.py`); `QSTATS_DATABASE_URL` points
   it at PostgreSQL (`postgresql+psycopg://…`) or Azure SQL (`mssql+pyodbc://…`) once the driver is
-  installed. Only SQLite has been run.
+  installed (neither driver is a dependency). Only SQLite has been run. The operational tables are
+  derived from the contract, not identical to it (snapshots carry sales and receipts, purchase
+  orders carry the DC split), so a load step maps one onto the other.
 
 ## What a client deployment still needs
 
@@ -55,7 +62,9 @@ constructor, not changing the planner. This page separates what exists from what
 
 ## To confirm with the client
 
-How their system marks cancellations and returns; whether inventory snapshots are end-of-day; what
+The network: how many DCs, 3PLs and marketplaces, and which ones serve which customers (this
+decides whether the location handling above has to be generalised first). How their system marks
+cancellations and returns; whether inventory snapshots are end-of-day; what
 RESERVED means in their Amazon reports; supplier quotes and how late orders are recorded; service
 targets (the demo's class targets did worse than a uniform 95%, see `EVAL_PLAN.md`); holding-cost
 rate; which products are listed on Amazon but were never stocked there (the planner cannot see

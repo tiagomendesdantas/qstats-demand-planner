@@ -1,12 +1,15 @@
-# `docker compose up`: the app container builds the data and the database on first start (about six
-# minutes, the UCI file is downloaded); the API starts once the database exists.
+# `docker compose up`: the app container builds the data and the database on first start (about ten
+# minutes, the UCI file is downloaded); the API starts once the pipeline has finished. To rebuild
+# from scratch, delete data/.pipeline_complete.
 services:
   app:
     build: .
     ports: ["8501:8501"]
     volumes: ["./data:/app/data"]
+    environment:
+      QSTATS_WORKERS: "${QSTATS_WORKERS:-}"
     healthcheck:
-      test: ["CMD", "python", "-c", "import pathlib, sys; sys.exit(0 if pathlib.Path('data/planner.sqlite').exists() else 1)"]
+      test: ["CMD", "python", "-c", "import pathlib, sys; sys.exit(0 if pathlib.Path('data/.pipeline_complete').exists() else 1)"]
       interval: 15s
       timeout: 5s
       retries: 60

@@ -89,6 +89,33 @@ def build_error_table(bt, champion: np.ndarray, segments: np.ndarray, level: np.
     return ErrorTable(samples, counts)
 
 
+def build_weekly_error_table(bt, champion: np.ndarray, segments: np.ndarray, level: np.ndarray, min_samples: int) -> ErrorTable:
+    """Errors of the single week h weeks ahead, e = (actual - forecast) / level, pooled by segment
+    and horizon bucket like `build_error_table`. Used for the weekly bands shown with a plan; orders
+    use the cumulative table."""
+    samples, counts = {}, {}
+    n = len(champion)
+    for k, (lo, _hi) in enumerate(BUCKETS):
+        h = REPRESENTATIVE[lo]
+        if not bt.single_forecast or h not in bt.single_forecast:
+            continue
+        f = bt.single_forecast[h][champion, :, np.arange(n)].T
+        ok = bt.single_scored[h] & np.isfinite(f) & np.isfinite(bt.single_actual[h]) & (level > 0)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            e = np.where(ok, (bt.single_actual[h] - f) / level, np.nan)
+        for seg in np.unique(segments):
+            v = e[:, segments == seg]
+            v = v[np.isfinite(v)]
+            if len(v) >= min_samples:
+                samples[(seg, k)] = np.quantile(v, GRID)
+                counts[(seg, k)] = len(v)
+        allv = e[np.isfinite(e)]
+        if len(allv):
+            samples[("ALL", k)] = np.quantile(allv, GRID)
+            counts[("ALL", k)] = len(allv)
+    return ErrorTable(samples, counts)
+
+
 def weighted_quantiles(values: np.ndarray, weights: np.ndarray, qs: np.ndarray) -> np.ndarray:
     """Inverted-CDF quantiles of a weighted sample: the smallest value whose cumulative weight
     reaches q. Exact for mixtures with discrete atoms (interpolating between atoms is not)."""
