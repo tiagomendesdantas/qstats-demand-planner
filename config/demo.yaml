@@ -64,7 +64,8 @@ business:
     - {id: WEST_DC, kind: DC, region_share: 0.4}
     - {id: AMAZON_FBA, kind: FBA}
   fba_enabled_share: 0.45
-  fba_channel_share: 0.35       # share of an FBA-enabled SKU's customers who buy on Amazon
+  fba_channel_share: 0.45       # share of eligible customers of an FBA SKU who buy on Amazon
+  fba_max_median_line: 12       # only small-basket customers are Amazon shoppers
   categories:
     Seasonal Decor: [CHRISTMAS, XMAS, ADVENT, SANTA, REINDEER, SNOWFLAKE]
     Candles & Lighting: [CANDLE, T-LIGHT, TLIGHT, LANTERN, LIGHT, HOLDER]
@@ -81,6 +82,7 @@ business:
   fulfillment_cost_fixed: {DC: 0.45, FBA: 0.95}
   advertising_cost_pct: [0.04, 0.14]
   holding_cost_annual_pct: 0.24
+  cross_dc_extra_cost_usd: 1.10    # extra fulfilment cost when a DC ships to the other DC's region
   minimum_margin_pct: 0.15
 
 suppliers:
@@ -147,15 +149,20 @@ forecasting:
   croston_alpha: 0.15
   tsb_params: [0.15, 0.1]
   ma_windows: [4, 8, 13]
-  seasonal_prior_shrink: 0.75
+  seasonal_prior_shrink_k: 10     # log-space shrink weight n/(n+k), n = panel SKUs in the group
   quantiles: [0.5, 0.8, 0.9, 0.95]
   min_errors_for_sku_quantiles: 30
 
 reconstruction:
   window_trading_days: 28
   min_clean_days: 8
-  methods: [no_adjustment, pre_post_velocity, local_profile, model_expectation, censored_nb]
+  methods: [no_adjustment, pre_post_velocity, local_profile, model_expectation, censored_gamma]
   unknown_zero_run_probability: 0.02
+  # Chosen by scripts/tune_dev.py on the dev SKUs, before any demo SKU was scored. Rule: lowest
+  # two-sided episode MAE. local_profile 142.9 vs censored_gamma 150.2 (censored_gamma is less
+  # biased, -65 vs -86 units per episode; both are reported on the benchmark page).
+  planner_method: local_profile
+  gamma_min_shape: 0.3
 
 inventory:
   target_service_level: 0.95
@@ -166,7 +173,7 @@ inventory:
   stockout_risk_weeks: 8
 
 legacy:
-  ses_alpha: 0.2            # replaced by the value tuned on the dev SKUs (see EVAL_PLAN)
+  ses_alpha: 0.2            # tuned on the dev SKUs by scripts/tune_dev.py (MAE 39.9 vs 41.5 / 40.3)
   safety_days: 30
   fba_cover_days: 30
   fba_trigger_extra_days: 14
