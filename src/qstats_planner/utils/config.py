@@ -40,3 +40,12 @@ def resolve(path: str | Path) -> Path:
     """Paths in the config are relative to the repository root."""
     p = Path(path)
     return p if p.is_absolute() else ROOT / p
+
+
+def database_url(cfg: dict) -> str:
+    """The configured URL; a relative SQLite path is resolved against the repository root.
+    QSTATS_DATABASE_URL overrides it (e.g. a PostgreSQL or Azure SQL URL)."""
+    url = os.getenv("QSTATS_DATABASE_URL", cfg["paths"]["database_url"])
+    if url.startswith("sqlite:///") and not url.startswith("sqlite:////"):
+        url = "sqlite:///" + str(resolve(url.removeprefix("sqlite:///")))
+    return url
