@@ -245,15 +245,15 @@ def shade_runs(fig: go.Figure, x: np.ndarray, flags: np.ndarray, color: str, lab
             j = i
             while j + 1 < len(flags) and flags[j + 1]:
                 j += 1
+            # label the first run only; passing an empty label would make Plotly print "new text"
+            label_args = (
+                {"annotation_text": label, "annotation_position": "top left",
+                 "annotation_font": dict(size=11, color=palette()["muted"])}
+                if not shown
+                else {}
+            )
             fig.add_vrect(
-                x0=x[i],
-                x1=x[j] + np.timedelta64(width_days, "D"),
-                fillcolor=color,
-                line_width=0,
-                layer="below",
-                annotation_text=label if not shown else None,
-                annotation_position="top left",
-                annotation_font=dict(size=11, color=palette()["muted"]),
+                x0=x[i], x1=x[j] + np.timedelta64(width_days, "D"), fillcolor=color, line_width=0, layer="below", **label_args
             )
             shown = True
             i = j + 1
