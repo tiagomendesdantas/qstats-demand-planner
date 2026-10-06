@@ -65,7 +65,7 @@ weeks have zero or tiny demand.
     score(model, segment) = mean over SKUs and scored origins in the last 52 weeks of
                             |cumulative forecast − cumulative actual| / (mean weekly units × h)
 
-with h the SKU's protection interval (lead time P50 + review: 6.6 to 10.9 weeks in the live plan)
+with h the SKU's protection interval (lead time P50 + review: 6.6 to 11.0 weeks in the live plan)
 rounded to the nearest of 6, 8, 11 or 14 weeks. Chosen **per segment**, because one SKU's own
 record is short: over 52 weeks it holds three to eight non-overlapping windows of that length, few
 to choose among 25 candidates.
@@ -74,11 +74,11 @@ to choose among 25 candidates.
 - Hysteresis: an incumbent is replaced only if the new pick is 5% better, on the SKU's own windows
   when both models are scored there, otherwise on the segment's.
 - SKU override: a SKU keeps its own best model only if it beats the segment champion by 15% on at
-  least three non-overlapping windows.
+  least three non-overlapping windows that both models were scored on.
 - Re-selection every four weeks in the replay; the live plan selects once.
 
-The override was meant as an exception. In the live plan 138 of the 200 SKUs use it (35 on three
-windows, 46 on four, 21 on five, 33 on six, one on seven, two on eight), and the out-of-sample
+The override was meant as an exception. In the live plan 139 of the 200 SKUs use it (34 on three
+windows, 49 on four, 20 on five, 32 on six, two on seven, two on eight), and the out-of-sample
 check below suggests those picks fit noise.
 
 Segments (as of the plan date, `demand/segmentation.py`), first rule that matches: NEW_PRODUCT
@@ -88,17 +88,19 @@ Segments (as of the plan date, `demand/segmentation.py`), first rule that matche
 which sell on few weeks, land there; the SEASONAL segment is small.
 
 **Challenger (as of the plan date, not used to plan).** statsmodels ETS(A, Ad, N) with smoothing,
-trend and damping fitted by maximum likelihood (`forecasting/challengers.py`). Both sides are out
+trend and damping fitted by maximum likelihood (`forecasting/challengers.py`), on the same input as
+the candidates: the rate per trading day divided by the pooled seasonal prior, multiplied back for
+the forecast. It is not a plain ETS on raw sales; it borrows the prior. Both sides are out
 of sample: the champion is the one each SKU had 26 weeks before the plan date, chosen on data up
 to then, and ETS is refitted at every fourth origin of those 26 weeks with data up to that origin.
-A window counts only when both have a forecast, scored with the selection's scaled error. Over 702
-windows on 182 SKUs ETS scored 0.504 against the champions' 0.670:
+A window counts only when both have a forecast, scored with the selection's scaled error. Over 700
+windows on 182 SKUs ETS scored 0.507 against the champions' 0.660:
 
 | Segment | SKUs | ETS | Champion |
 |---|---|---|---|
-| INTERMITTENT | 97 | 0.620 | 0.961 |
-| TRENDING | 58 | 0.375 | 0.290 |
-| VOLATILE | 18 | 0.348 | 0.295 |
+| INTERMITTENT | 97 | 0.627 | 0.950 |
+| TRENDING | 58 | 0.374 | 0.289 |
+| VOLATILE | 18 | 0.354 | 0.285 |
 | REGULAR | 7 | 0.236 | 0.253 |
 | SEASONAL | 2 | 0.529 | 1.233 |
 
@@ -119,7 +121,8 @@ whole history, as of the origin. Errors are pooled by segment and horizon bucket
 max(0, forecast + level × h × e).
 
 The weekly bands shown with a plan use a second table of the same shape: errors of the single week
-h ahead, e = (actual − forecast) / level. Week-to-week noise dominates this demand: pooled over
+h ahead, e = (actual − forecast) / level, scaled by the week's trading days relative to a normal
+week, so a closed week (the year-end shutdown) has no band. Week-to-week noise dominates this demand: pooled over
 segments, the P10–P90 spread of those errors grows by about 16% from one week ahead to 21–26 weeks
 ahead, so the bands widen only a little (and narrow where the forecast falls toward zero).
 
@@ -129,10 +132,10 @@ level alone did the same for SKUs dormant for months.
 
 **Calibration is measured, not assumed.** In the controlled replay QStats recorded its quantiles at
 every weekly plan; the realised value uses the lead time an order placed that week would have had.
-Over 6,385 SKU-weeks (all 200 SKUs, overlapping windows, no interval computed) the P80 held 75.3% of
-outcomes, the P90 83.8% and the P95 89.1%. The intervals are too narrow, most for new products
-(P90 57.2%, P95 66.6%) and in the September–December season (P95 85.2%); REGULAR SKUs (479
-SKU-weeks) are close to nominal (P90 89.8%, P95 94.6%). Two likely causes, both by construction: the error
+Over 6,387 SKU-weeks (all 200 SKUs, overlapping windows, no interval computed) the P80 held 75.8% of
+outcomes, the P90 84.1% and the P95 89.2%. The intervals are too narrow, most for new products
+(P90 57.9%, P95 67.2%) and in the September–December season (P95 85.0%); REGULAR SKUs (469
+SKU-weeks) are close to nominal (P90 90.4%, P95 94.7%). Two likely causes, both by construction: the error
 quantiles come from the champion's errors on the same windows used to select it (a winner's curse),
 and windows more than 10% reconstructed are not scored, which leaves out busy stockout periods.
 Recalibration is the first roadmap item.
@@ -146,7 +149,7 @@ REVIEW_FORECAST instead of BUY.
 
 ## What the evidence says about accuracy
 
-In the replay, QStats's one-week WAPE was 0.640, 0.652 and 0.644 in the three worlds against the
+In the replay, QStats's one-week WAPE was 0.645, 0.653 and 0.651 in the three worlds against the
 legacy process's 0.616, 0.621 and 0.622: QStats was less accurate week to week in all three, and no
 accuracy gain is claimed. Forecast bias fell from about −20% to about −7% in all three, which is
 what stockout correction is for. The out-of-sample challenger above points at the SKU-level

@@ -1,8 +1,9 @@
 """Champion selection: per segment, not per SKU.
 
-With one or two years of weekly history and a 10-15 week protection interval, a single SKU has
-only two or three non-overlapping backtest windows: far too few to choose among ~25 candidates
-without fitting noise. So the champion is chosen per segment, on errors pooled across its SKUs:
+With one or two years of weekly history and a 7-11 week protection interval, a single SKU has only
+three to eight non-overlapping backtest windows in the last 52 weeks: few to choose among ~25
+candidates without fitting noise. So the champion is chosen per segment, on errors pooled across
+its SKUs:
 
     score(model, segment) = mean over SKUs and scored origins of
                             |cumulative forecast - cumulative actual| / (mean weekly units x h)
@@ -12,6 +13,7 @@ Rules (all thresholds in the config):
     hysteresis  an incumbent champion is replaced only if the new one is better by `switch_margin`
     SKU override a SKU keeps its own best model only if it beats the segment champion by
                 `sku_override_margin` on at least `sku_override_min_blocks` non-overlapping windows
+                that both models were scored on
     fallback    a segment with too few scored windows uses the pooled all-SKU champion
 """
 
@@ -94,38 +96,48 @@ def select(
         for i in idx:
             reason[i] = why
 
-    # SKU override on non-overlapping windows
-    own_scores = np.full((M, n), np.nan)
-    for i in range(n):
-        h = max(int(horizon[i]), 1)
-        blocks = err[:, ::h, i]
-        nb = np.isfinite(blocks).sum(axis=1)
-        own = (
-            np.where(
-                nb >= f["sku_override_min_blocks"], np.nanmean(np.where(np.isfinite(blocks), blocks, np.nan), axis=1), np.nan
-            )
-            if blocks.size
-            else np.full(M, np.nan)
-        )
-        own_scores[:, i] = own
-        if np.all(np.isnan(own)) or np.isnan(own[champion[i]]):
-            continue
-        best = int(np.nanargmin(own))
-        if own[best] < own[champion[i]] * (1 - f["sku_override_margin"]):
-            champion[i] = best
-            reason[i] = f"SKU's own best on {int(nb[best])} non-overlapping windows"
+    # SKU override on non-overlapping windows. Two models are compared only on the windows where both
+    # were scored (seasonal naive, for one, has no forecast where last year's week was closed), so a
+    # model never wins on a window its rival was not scored on.
+    min_blocks = f["sku_override_min_blocks"]
 
-    # hysteresis against the incumbent: compare on the SKU's own windows when both models are scored
-    # there (so an SKU override is not judged on segment scores it can never beat), else on segment
+    def own_blocks(i: int) -> np.ndarray:
+        return err[:, :: max(int(horizon[i]), 1), i]  # (M, non-overlapping windows)
+
+    def paired(blocks: np.ndarray, a: int, b: int) -> tuple[float, float, int]:
+        """Mean error of models a and b over the windows both were scored on, and how many."""
+        both = np.isfinite(blocks[a]) & np.isfinite(blocks[b])
+        k = int(both.sum())
+        if k < min_blocks:
+            return np.nan, np.nan, k
+        return float(blocks[a, both].mean()), float(blocks[b, both].mean()), k
+
+    for i in range(n):
+        blocks = own_blocks(i)
+        c = champion[i]
+        if blocks.size == 0 or not np.isfinite(blocks[c]).any():
+            continue
+        best, best_ratio, best_k = -1, np.inf, 0
+        for m in range(M):
+            if m == c:
+                continue
+            em, ec, k = paired(blocks, m, c)
+            if np.isfinite(em) and ec > 0 and em / ec < best_ratio:
+                best, best_ratio, best_k = m, em / ec, k
+        if best >= 0 and best_ratio < 1 - f["sku_override_margin"]:
+            champion[i] = best
+            reason[i] = f"SKU's own best on {best_k} non-overlapping windows"
+
+    # hysteresis against the incumbent: on the windows where both are scored, when there are enough
+    # (so a SKU override is not judged on segment scores it can never beat), else on segment scores
     if previous is not None:
         for i in range(n):
             p = previous[i]
             if p < 0 or p == champion[i]:
                 continue
-            own = own_scores[:, i]
-            if np.isfinite(own[champion[i]]) and np.isfinite(own[p]):
-                new, old, basis = own[champion[i]], own[p], "the SKU's own windows"
-            else:
+            new, old, _ = paired(own_blocks(i), champion[i], p)
+            basis = "the SKU's own windows"
+            if not (np.isfinite(new) and np.isfinite(old)):
                 seg_s = seg_scores.loc[segments[i]] if segments[i] in seg_scores.index else pooled
                 new, old, basis = seg_s.iloc[champion[i]], seg_s.iloc[p], "segment windows"
             if np.isfinite(old) and np.isfinite(new) and new > old * (1 - f["switch_margin"]):

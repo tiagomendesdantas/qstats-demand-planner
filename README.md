@@ -20,7 +20,7 @@ The product is the inventory decision; the forecast is one input to it.
 | Area | What is in the repo | Where to look |
 |---|---|---|
 | Censored demand | Detects stockout days from inventory snapshots, reconstructs demand with four transparent methods, and scores them against the hidden true demand in a controlled experiment | [`demand/reconstruction.py`](src/qstats_planner/demand/reconstruction.py), [`evaluation/benchmark.py`](src/qstats_planner/evaluation/benchmark.py) |
-| Forecasting | 25 candidates (naive, moving average, SES, damped Holt, Croston, SBA, TSB, seasonal naive, ± a pooled seasonal prior); champion per segment by rolling-origin error of lead-time demand, with a SKU-level override; a statsmodels ETS challenger scored out of sample (it beat the champions) | [`forecasting/`](src/qstats_planner/forecasting/) |
+| Forecasting | 25 candidates (naive, moving average, SES, damped Holt, Croston, SBA, TSB, seasonal naive, ± a pooled seasonal prior); champion per segment by rolling-origin error of lead-time demand, with a SKU-level override; a statsmodels ETS challenger on the same input, scored out of sample (it beat the champions) | [`forecasting/`](src/qstats_planner/forecasting/) |
 | Uncertainty | Empirical error quantiles pooled by segment and horizon, for demand over lead time + review and for each week ahead; realised coverage measured and reported (the intervals run narrow) | [`forecasting/uncertainty.py`](src/qstats_planner/forecasting/uncertainty.py), [`evaluation/calibration.py`](src/qstats_planner/evaluation/calibration.py) |
 | Inventory | Kaplan–Meier supplier lead times (open orders censored); demand over lead time + review as a mixture of lead-time and forecast-error distributions; order-up-to levels, MOQ and case-pack rounding; 180-day projection | [`inventory/`](src/qstats_planner/inventory/), [`replenishment/`](src/qstats_planner/replenishment/) |
 | Decisions | Action center with nine action types (plus NO_ACTION), each with reason, evidence, expected effect, confidence and economic impact; Amazon FBA plan; container mix; planner overrides with an audit trail | [`replenishment/recommendations.py`](src/qstats_planner/replenishment/recommendations.py), [`optimization/containers.py`](src/qstats_planner/optimization/containers.py) |
@@ -38,7 +38,9 @@ things make that decision harder than it looks:
 2. **Lead times are uncertain.** The supplier's quote is a median at best. What matters for stock
    is the tail: how late the late orders are.
 3. **The forecast is not the decision.** Purchasing needs a quantity that respects MOQ, case packs
-   and container space, that covers Amazon separately, and that is worth its margin.
+   and container space and that covers Amazon separately. QStats rounds orders up to MOQ and case
+   pack and sends low-margin lines to a person; it does not yet weigh an MOQ-inflated order against
+   what the extra units cost to carry.
 
 ## What it does
 
@@ -51,11 +53,12 @@ real transaction patterns ─▶ demand history ─▶ inventory availability �
 Each week the planning cycle produces recommendations a buyer can act on. The plan in the app is
 QStats's advice for the business **as the current process left it** on Sunday 7 Dec 2025 (the end of
 the legacy world below). On that date 40 of 200 SKUs are projected to run out within eight weeks;
-orders placed today land after all of those stockouts, so expediting and transfers are the levers
-there. The plan has 44 purchase lines worth $70.1k (3 routed to a person: low forecast confidence or
-low margin). If all are approved, the plan's own estimate of the demand-weighted chance of covering
-demand over lead time + review goes from 83% to 97%; read that as optimistic, because in the replay
-this model's P90 covered 84% of outcomes.
+this week's orders land in time for 1 of them, so expediting and transfers are the levers there.
+The plan has 42 purchase lines worth $66.7k (3 routed to a person: low forecast confidence or low
+margin), and container top-ups add $11.0k. Over the next 13 weeks, stock and open orders can serve
+86% of forecast demand, and 93% if this week's orders are approved. That projection puts receipts
+on their expected dates and loses unmet demand, but holds demand at its forecast, so read both
+figures as optimistic.
 
 ![Action center](docs/screenshots/action-center.png)
 
@@ -69,94 +72,97 @@ confident the plan is:
 The same simulated business was run twice from the same day (2 Dec 2024): once with a
 conventional legacy process, once with QStats. Same products, same real demand pattern, same
 supplier delays. Scored on 168 SKUs over 15 Feb – 7 Dec 2025 (296 days). The evaluation plan was
-committed before the comparison was run. Three corrections since, each followed by a full rerun,
-are logged with the numbers before and after ([`docs/EVAL_PLAN.md`](docs/EVAL_PLAN.md), change log).
-The third fixed a SKU-selection bug that redrew 94 of the 200 SKUs, and re-applying the
-pre-set development rule switched the stockout reconstruction method, so these are not the first
-run's numbers.
+committed before the comparison was run. Four rounds of corrections since, each followed by a full
+rerun, are logged with the numbers before and after ([`docs/EVAL_PLAN.md`](docs/EVAL_PLAN.md),
+change log). The third fixed a SKU-selection bug that redrew 94 of the 200 SKUs, and re-applying
+the pre-set development rule switched the stockout reconstruction method, so these are not the
+first run's numbers.
 
 | | Legacy (30 days of safety stock) | QStats |
 |---|---|---|
 | Fill rate | 84.0% | 92.3% |
-| Lost contribution | $146.1k | $58.4k |
-| Average inventory | $246.9k | $435.8k |
-| Carrying cost (24% a year, 296 days) | $48.1k | $84.8k |
-| Inventory turns | 3.55 | 2.21 |
-| Excess inventory at the end | $41.4k | $149.3k |
-| One-week forecast WAPE | 0.616 | 0.640 |
-| Forecast bias | −20.5% | −6.8% |
+| Lost contribution | $146.1k | $57.9k |
+| Average inventory | $247.1k | $439.3k |
+| Carrying cost (24% a year, 296 days) | $48.1k | $85.5k |
+| Inventory turns | 3.55 | 2.19 |
+| Excess inventory at the end | $41.3k | $155.5k |
+| One-week forecast WAPE | 0.616 | 0.645 |
+| Forecast bias | −20.5% | −7.3% |
 
 **In plain terms,** QStats ran the business at about the fill rate the current process reaches with
-120 days of safety stock instead of 30 (92.1% with $558.3k), on 21.9% less inventory than that.
-Against the 30-day process, over the 296 scored days, it recovered $87.6k of contribution and saved
-$12.4k of cross-DC shipping, at $36.8k of extra carrying cost: about +$63k, while ending with
-$107.9k more stock beyond 26 weeks of demand. About half of that net comes from the higher service
+120 days of safety stock instead of 30 (92.1% with $559.7k), on 21.5% less inventory than that.
+Against the 30-day process, over the 296 scored days, it recovered $88.1k of contribution and saved
+$11.7k of cross-DC shipping, at $37.4k of extra carrying cost: about +$62k, while ending with
+$114.1k more stock beyond 26 weeks of demand. About half of that net comes from the higher service
 level alone: the current process at 120 days would net about +$33k against its 30-day self on the
 same terms.
 
 **At the service level the current process delivers, QStats did not save inventory.** The test fixed
 in advance (inventory each policy needs for the legacy process's fill rate, read off its frontier):
-QStats needed 2.3% *more* inventory (90% interval: from 6.3% less to 14.2% more; 0.6% less and 3.2%
-more in two replicate worlds with different supplier luck). In 37.8% of the bootstrap resamples the
+QStats needed 4.7% *more* inventory (90% interval: from 4.8% less to 16.6% more; 2.2% more and 2.6%
+more in two replicate worlds with different supplier luck). In 26.9% of the bootstrap resamples the
 comparison fell outside QStats's frontier and is left out of the interval: in every one of them even
-QStats's lowest setting (a 70% target) delivered more fill than the current process, and in 109 of
+QStats's lowest setting (a 70% target) delivered more fill than the current process, and in 69 of
 the 1,000 it did so with no more inventory.
 
 **At QStats's service level, the legacy frontier runs out.** QStats delivered 92.3% fill; the
-current rule's highest tested setting, 120 days of safety stock, reached 92.1% and held 28.1% more
+current rule's highest tested setting, 120 days of safety stock, reached 92.1% and held 27.4% more
 inventory than QStats. Because 92.3% lies beyond the end of the legacy frontier, the pre-registered
 secondary metric (inventory the legacy rule needs at QStats's fill) is out of range in the reference
-world, as it is in 66.0% of its resamples; in the two replicate worlds the legacy rule needed 7.1%
-more and 28.2% more inventory than QStats. In the reference world the curves cross near 85% fill:
-below it the legacy curve is as good or slightly better, above it QStats holds less stock for the
-same fill.
+world, as it is in 63.6% of its resamples; in the two replicate worlds the legacy rule needed 4.8%
+more and 16.6% more inventory than QStats. In the reference world the curves cross near 85% fill:
+below it the legacy curve is as good or better, above it QStats holds less stock for the same fill.
 
 ![Legacy vs QStats](docs/screenshots/legacy-vs-qstats.png)
 
 What else the evidence says, without rounding up:
 
-- **The legacy process with only a seasonal prior added is the strongest single change.** Its
-  inventory efficiency against the legacy frontier is +19.3%, +20.5% and +24.6% in the three worlds.
-  Full QStats can be read in two of them (+7.1% and +28.2%) and beats it in one.
-- **No QStats ingredient helps on its own.** Reconstruction alone costs 1–7% efficiency;
-  probabilistic safety stock learned from raw, censored sales costs 45–48%; the forecaster alone
-  delivers less fill than the legacy rule at 15 days, with more inventory. Combined with
-  reconstruction, the prior helps in all three worlds and probabilistic safety stock in two.
+- **Adding only the seasonal prior to the legacy process is the strongest single change.** Its
+  inventory efficiency against the legacy frontier is +19.2%, +20.4% and +24.3% in the three worlds.
+  Full QStats can be read in two of them (+4.8% and +16.6%), and the prior-only change beats it in
+  both.
+- **Inside QStats, no ingredient helps on its own.** Reconstruction alone costs 1–7% efficiency.
+  Probabilistic safety stock learned from raw, censored sales (with Kaplan–Meier lead times and
+  QStats's Amazon rule, which the same switch brings in) scores −44.9% to −48.5%. The forecaster
+  alone delivers less fill than the legacy rule at 15 days with more inventory, and so does the
+  prior inside QStats's forecaster in two of three worlds (−14.0% in the third). Combined with
+  reconstruction, the prior helps in all three worlds and probabilistic safety stock in one.
 - **QStats's own default targets are not its best setting.** In all three worlds a uniform 95%
   target beat the class targets it uses (A 97%, B 95%, C 90%): more fill with less stock.
-- **Forecast accuracy got slightly worse.** One-week WAPE 0.640, 0.652 and 0.644 against the legacy
+- **Forecast accuracy got slightly worse.** One-week WAPE 0.645, 0.653 and 0.651 against the legacy
   process's 0.616, 0.621 and 0.622. Forecast bias fell from about −20% to about −7% in all three
   worlds, which is what stockout correction is for.
-- **The model selection did worse out of sample than a simple challenger.** A statsmodels ETS
-  fitted per SKU, scored against the champion each SKU had 26 weeks before the plan date, had a
-  scaled error of 0.504 against the champions' 0.670 (702 windows, 182 SKUs); the champions were
-  better only for trending and volatile SKUs. 138 of 200 SKUs run on their own SKU-level pick among
-  25 candidates, which suggests that override is fitting noise.
-- **Intervals run narrow.** The P90 of lead-time demand held 83.8% of outcomes and the P95 89.1%,
-  worst for new products (P90 57.2%) and in the peak season (P95 85.2%).
+- **The model selection did worse out of sample than an ETS challenger.** An ETS(A, Ad, N) fitted
+  per SKU by maximum likelihood, on the same prior-adjusted input the candidates use and scored
+  against the champion each SKU had 26 weeks before the plan date, had a scaled error of 0.507
+  against the champions' 0.660 (700 windows, 182 SKUs); the champions were better only for trending
+  and volatile SKUs. 139 of 200 SKUs run on their own SKU-level pick among 25 candidates, which
+  suggests that override is fitting noise.
+- **Intervals run narrow.** The P90 of lead-time demand held 84.1% of outcomes and the P95 89.2%,
+  worst for new products (P90 57.9%) and in the peak season (P95 85.0%).
 - **QStats's edge does not come from modelling lead-time uncertainty.** In a sensitivity world where
-  every order arrives exactly on its quote, QStats saved 5.6% at the legacy fill rate (interval from
-  5.7% more to 12.8% less), and the legacy rule needed 37.1% more inventory to reach QStats's fill
-  (interval +9.7% to +57.9%): more favourable to QStats than the base world.
-- **A channel that never sells is invisible.** 18 of 72 Amazon-enabled SKUs never sold on Amazon after
-  the fork in the QStats world (19 in the legacy world); 16 of them had Amazon demand, 7,886 units that
+  every order arrives exactly on its quote, QStats saved 5.3% at the legacy fill rate (interval from
+  6.0% more to 12.6% less), and the legacy rule needed 39.5% more inventory to reach QStats's fill
+  (interval +12.1% to +59.3%): more favourable to QStats than the base world.
+- **A channel that never sells is invisible.** 17 of 72 Amazon-enabled SKUs never sold on Amazon after
+  the fork in the QStats world (18 in the legacy world); 15 of them had Amazon demand, 7,884 units that
   went unserved, which neither planner could see.
 
 ### Stockouts: sales are not demand
 
 The real transaction history is treated as the demand a simulated business faced, and simulated
-stockouts cut sales short (15,419 censored channel-days in 624 episodes, 166,675 units of hidden
+stockouts cut sales short (15,425 censored channel-days in 628 episodes, 166,835 units of hidden
 lost demand). Because the uncut series is kept aside, each reconstruction method can be scored
 against it. Two-sided uses data before and after an episode (available afterwards); real time uses
 only the data before it:
 
 | Method | Episode error, two-sided (units) | Bias, two-sided | Lost demand recovered, two-sided | Recovered, real time |
 |---|---|---|---|---|
-| No adjustment | 267 | −267 | 0% | 0% |
-| Pre/post velocity | 141 | −98 | 63% | 72% |
+| No adjustment | 266 | −266 | 0% | 0% |
+| Pre/post velocity | 140 | −97 | 64% | 72% |
 | Local level × weekday × season | 134 | −87 | 67% | 79% |
-| Smoothed level at episode start | 195 | −47 | 82% | 82% |
-| Censored likelihood (gamma, EM; used by the planner) | 127 | −56 | 79% | 88% |
+| Smoothed level at episode start | 194 | −48 | 82% | 82% |
+| Censored likelihood (gamma, EM; used by the planner) | 127 | −55 | 79% | 88% |
 
 The planner's method was chosen on 120 separate development SKUs by a rule fixed in advance
 (lowest two-sided episode error); on these demo SKUs it also has the lowest episode error. Recovered
@@ -182,7 +188,8 @@ The legacy process is what a careful team runs in a spreadsheet or an ERP module
 | Amazon FBA | Days of cover counting pick, transit and review time | Service-level quantile over the replenishment window, by inventory state |
 
 Both see the same open purchase orders. The legacy rule's weakness in this test is specific: it
-believes censored sales, ignores seasonality and treats the quote as certain.
+believes censored sales, ignores seasonality, treats the quote as certain and counts every unit at
+Amazon, reserved ones included, as available.
 
 ## Data: what is real and what is simulated
 
@@ -209,6 +216,14 @@ new products drawn at random among week 53–80 launches, by launch date only.
 
 | Term | Meaning here |
 |---|---|
+| DC | Distribution centre (here EAST_DC and WEST_DC) |
+| FBA | Fulfilment by Amazon: stock held and shipped by Amazon |
+| MOQ | Minimum order quantity a supplier accepts |
+| Order-up-to level | The inventory position an order tops up to; here the service-level quantile of demand over lead time + review |
+| Champion | The forecasting model chosen for a segment (or kept by a SKU) by its backtest error |
+| Scaled error | Absolute error of total demand over the protection interval ÷ (the SKU's mean weekly units × weeks); 0.5 means off by half a typical interval's demand |
+| ETS | Exponential smoothing state-space model (statsmodels), here with additive damped trend |
+| EM | Expectation–maximisation: alternately estimate the censored values and the model until they agree |
 | Fill rate | Units sold ÷ units demanded (true demand, hidden from the planner) |
 | Inventory efficiency | Inventory the legacy rule needs to reach a policy's fill rate ÷ that policy's own inventory − 1; positive = less stock for the same service |
 | Out of range | A fill rate beyond the ends of the frontier it is read on; the comparison does not extrapolate, so no value is reported |
@@ -227,8 +242,8 @@ new products drawn at random among week 53–80 launches, by launch date only.
 
 The app's headline figures describe today's business as the current process left it; the comparison
 figures describe the replayed year in each world. They measure different things (for example the
-app's forecast bias is the champions' backtest on reconstructed demand, −1.9%; the comparison's is
-against true demand, −6.8%).
+app's forecast bias is the champions' backtest on reconstructed demand, −2.6%; the comparison's is
+against true demand, −7.3%).
 
 ## Methodology
 
@@ -260,9 +275,11 @@ flowchart LR
   DB --> UI[Streamlit]
 ```
 
-The planner reads canonical tables only, never UCI column names, and does not import the
-simulation (tests enforce both). One planning code path serves the weekly simulation, the live
-plan and the scenario simulator. The schema uses portable SQLAlchemy types, but only SQLite has
+The planner reads a `PlannerView` ([`domain/view.py`](src/qstats_planner/domain/view.py)), which today
+only the simulation builds; adapters turn a source into canonical tables, and a constructor that
+builds the view from a client's tables is the main piece not written yet. No planner module names a
+UCI column or imports the simulation (tests enforce both). One planning code path serves the weekly
+simulation, the live plan and the scenario simulator. The schema uses portable SQLAlchemy types, but only SQLite has
 been run, and the planner assumes the demo's network of two DCs plus Amazon FBA. What a move to a
 client's PostgreSQL or Azure SQL system needs, and what is not built yet, is in
 [`docs/client_onboarding.md`](docs/client_onboarding.md); more in
@@ -280,7 +297,7 @@ downloads and verifies the UCI file, cleans it, selects the SKUs, runs the simul
 policy comparison, builds the SQLite database, runs the planning cycle and starts the app at
 http://localhost:8501 (open it in a browser; the server runs headless). On a laptop with 8 cores and
 8 GB of memory the whole run takes about ten minutes. The comparison runs parallel processes of
-about 1 GB each, by default min(8, CPUs, memory / 1.2 GB); `make demo WORKERS=4` uses fewer. Step by
+about 1 GB each, by default min(8, CPUs, 75% of memory / 1.2 GB); `make demo WORKERS=4` uses fewer. Step by
 step:
 
 ```bash
@@ -296,8 +313,10 @@ uv run uvicorn qstats_planner.api.main:app      # the API, docs at /docs
 uv run pytest -q
 ```
 
-`scripts/tune_dev.py` reproduces the development decisions; `scripts/evaluate_policies.py` runs
-the comparison on either population. A clean clone reproduced the reported results exactly. CI runs
+`scripts/tune_dev.py` reproduces the two tuned development settings (the legacy smoothing constant
+and the reconstruction method); the other development decisions are recorded in
+[`docs/EVAL_PLAN.md`](docs/EVAL_PLAN.md) but not scripted. `scripts/evaluate_policies.py` runs the
+comparison on either population. A clean clone reproduced the reported results exactly. CI runs
 lint, the unit tests and a Docker build; the tests that check the README's numbers and the API need
 the pipeline's outputs and run locally after `make demo`.
 
@@ -307,14 +326,16 @@ the pipeline's outputs and run locally after `make demo`.
   world built around real demand. They say nothing about the original retailer and are not a
   forecast of savings for any company.
 - **The evidence is thin.** One demand path; three replicate worlds; the primary metric is not
-  distinguishable from zero and the secondary is out of range in the reference world; 38% of the
+  distinguishable from zero and the secondary is out of range in the reference world; 27% of the
   primary's resamples fall outside the frontier; the SKU bootstrap ignores that SKUs share
   suppliers, so its intervals are probably too narrow; the pre-registration is a local git commit
   without an external timestamp.
-- **The reported run is the third.** Each correction since the plan was committed is logged with
-  its effect; the third redrew 94 of the 200 SKUs and changed the reconstruction method.
-- **The SKU-level model override probably overfits.** 69% of SKUs use it, and out of sample a
+- **The reported numbers follow four rounds of corrections.** Each is logged with its effect; the
+  third redrew 94 of the 200 SKUs and changed the reconstruction method.
+- **The SKU-level model override probably overfits.** 139 of 200 SKUs use it, and out of sample a
   per-SKU ETS beat the selected champions.
+- **The replay approves everything.** It places every order and Amazon send the plan sizes,
+  including the lines the live plan holds for a person, and no container top-ups.
 - **Two years of weekly data.** Seasonality is a pooled prior, not estimated per product.
 - **Intervals are too narrow,** especially in the peak season and for new products.
 - **Never-stocked channels stay dark**: no rule yet launches an Amazon-enabled product on Amazon

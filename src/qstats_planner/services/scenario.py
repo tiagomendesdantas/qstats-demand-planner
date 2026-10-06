@@ -7,6 +7,7 @@ and containers come from the same functions as the weekly plan, so the base run 
 
 from __future__ import annotations
 
+import dataclasses
 import pickle
 import warnings
 from dataclasses import dataclass
@@ -15,6 +16,7 @@ import numpy as np
 import pandas as pd
 
 from qstats_planner.economics.impact import PURCHASE_ACTIONS, portfolio_kpis
+from qstats_planner.inventory.lead_time_demand import service_level
 from qstats_planner.optimization.containers import containers_for_plan
 from qstats_planner.replenishment import recommendations
 from qstats_planner.replenishment.policy import PlanSettings, run_cycle
@@ -67,6 +69,19 @@ class ScenarioService:
             # reproduces this week's plan exactly
             plan = recommendations.build(self.view, st, self.cfg, pd.Timestamp(0))
             k = portfolio_kpis(self.view, st, plan, self.cfg)
+            # One yardstick for every policy: the legacy rule sizes its orders on the quoted lead
+            # time, but they are graded, like the plan's, against the Kaplan-Meier lead-time demand
+            # and the plan's position definition. The policy switch changes only how orders are sized.
+            graded = st
+            if not probabilistic:
+                graded = run_cycle(
+                    self.view,
+                    self.cfg,
+                    self.prior,
+                    dataclasses.replace(settings, probabilistic=True),
+                    previous=self.fs,
+                    refit=False,
+                )
         v = self.view
         prod = v.products
         cost = prod["unit_cost"].to_numpy(float)
@@ -79,6 +94,9 @@ class ScenarioService:
         _, csum = containers_for_plan(plan, prod, sups, self.cfg)
         risk = self.cfg["inventory"]["stockout_risk_weeks"] * 7
         so_after = sp["stockout_day_with_order"].to_numpy()
+        svc = np.array([service_level(graded.ltd.samples[i], graded.position[i] + st.order_qty[i]) for i in range(v.n_sku)])
+        w = np.where(v.launched, sp["weekly_demand"].to_numpy(), 0)
+        top_up = float(csum["top_up_value"].sum()) if len(csum) else 0.0
         summary = {
             "purchase_lines": k["purchase_lines"],
             "purchase_lines_for_review": k["purchase_lines_for_review"],
@@ -86,11 +104,13 @@ class ScenarioService:
             "purchase_value": k["purchase_value"],
             "skus_at_risk_before_orders": k["skus_at_stockout_risk"],
             "skus_at_risk_after_orders": int((v.launched & (so_after >= 0) & (so_after < risk)).sum()),
-            "projected_service_level": k["service_level_after_plan"],
+            "projected_service_level": float((svc * w).sum() / max(w.sum(), 1e-9)),
+            "projected_fill_13w": k["projected_fill_13w_after_plan"],
+            "container_top_up_value": top_up,
             "inventory_value_now": k["inventory_value"],
             "projected_average_inventory_13w": float((np.maximum(plan["path_with_order"][:91], 0).mean(axis=0) * cost).sum()),
             "safety_stock_value": float((sp["safety_stock"].to_numpy() * cost).sum()),
-            "working_capital_committed": k["inventory_value"] + k["purchase_value"],
+            "working_capital_committed": k["inventory_value"] + k["purchase_value"] + top_up,
             "containers": int(csum["containers"].sum()) if len(csum) else 0,
             "mean_container_utilisation": float(csum["utilisation"].mean()) if len(csum) else float("nan"),
         }
@@ -99,7 +119,7 @@ class ScenarioService:
                 "sku": prod["sku"],
                 "order_qty": qty,
                 "order_up_to": st.target,
-                "service_after": sp["service_after"].to_numpy(),
+                "service_after": svc,
                 "purchase_value": qty * cost,
             }
         )

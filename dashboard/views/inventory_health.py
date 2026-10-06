@@ -19,7 +19,11 @@ theme.title("Inventory health", "Where the money sits, how long it lasts, and wh
 theme.strip(
     [
         ("Inventory value", theme.money(k["inventory_value"]), "on hand, all locations, at cost"),
-        ("Median cover", f"{np.nanmedian(cover):.1f} wk", "on hand + on order / forecast"),
+        (
+            "Median cover",
+            f"{np.median(d['weeks_of_cover']):.1f} wk",
+            "on hand + on order / forecast; no-forecast SKUs count as unlimited",
+        ),
         ("Projected stockouts", f"{k['skus_at_stockout_risk']}", f"within {k['stockout_risk_weeks']} weeks, no new order"),
         ("Excess", theme.money(k["excess_inventory_value"]), f"on hand beyond {k['excess_weeks_of_cover']} weeks of forecast"),
         ("Inventory turns", f"{k['inventory_turns']:.1f}", "trailing 13 weeks, annualised"),

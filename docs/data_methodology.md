@@ -69,9 +69,10 @@ Fields kept per SKU-day: `gross_units_sold` (all sale lines), `returns`, `net_un
 
 The retailer traded on 604 of 739 calendar days: no Saturdays (one exception, 9 Dec 2023 on the
 shifted calendar), two eleven-day year-end shutdowns (28 Dec – 7 Jan and 27 Dec – 6 Jan, shifted),
-and four-day Easter closures. A closed day is not a zero-demand day, so demand is modelled per
-trading day and weekly forecasts are multiplied by the number of trading days in the week. Future
-trading days follow the observed pattern (Saturdays closed, 27 Dec – 6 Jan shut).
+four-day Easter closures and seven single-day bank-holiday closures. A closed day is not a
+zero-demand day, so demand is modelled per trading day and weekly forecasts are multiplied by the
+number of trading days in the week. Future trading days keep only the Saturday closure and the
+27 Dec – 6 Jan shutdown; Easter and bank holidays are not projected.
 
 Every date is moved forward by exactly 731 weeks (weekdays and seasons preserved), so the history
 reads as 5 Dec 2023 – 12 Dec 2025. `calendar.shift_weeks: 0` turns this off.
@@ -121,7 +122,9 @@ Placed around the real demand patterns, seeded (`random_seed: 42`) and described
   (median line ≤ 12 units) are Amazon shoppers. Demand shares: EAST 56%, WEST 34%, Amazon 10%.
 - **Fulfilment.** A DC that cannot serve its region ships from the other DC when it can ($1.10
   extra per unit). Amazon demand is served from Amazon stock only. Unserved demand is lost.
-- **Products.** USD selling price from the source's median price × 1.27 × a markup of 2.0–2.6;
+- **Products.** Category from keyword lists matched as whole words of the description, plurals
+  allowed (`business.categories`; anything unmatched is Gifts & Accessories); each category is
+  supplied by one or two of the suppliers. USD selling price from the source's median price × 1.27 × a markup of 2.0–2.6;
   landed cost 26–44% of price; fulfilment (DC 10% + $0.45, FBA 17% + $0.95) and advertising
   (4–14%) costs; contribution margin from those. Case pack = the most common order quantity among
   standard pack sizes; MOQ = 3–8 weeks of first-year demand in whole cases; cube 0.015–0.12 m³ per
@@ -137,9 +140,9 @@ Placed around the real demand patterns, seeded (`random_seed: 42`) and described
   arrival spends four days in an Amazon fulfilment-centre transfer; 3–12% of Amazon stock is
   RESERVED on any day and a small share of it is written off.
 - **Events.** 12% of SKUs get one to three simulated promotions (uplift drawn from a lognormal,
-  unknown to every planner; calendar announced six weeks ahead) and 4% of the SKUs that really did
-  stop selling get a simulated liquidation in their last four weeks. These 32 SKUs are excluded from
-  the headline comparison.
+  unknown to every planner; calendar announced six weeks ahead), and 8 SKUs (4% of the 200), drawn
+  among the 44 that really did stop selling, get a simulated liquidation in their last four weeks.
+  These 32 SKUs are excluded from the headline comparison.
 
 ## 7. What is hidden
 

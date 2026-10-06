@@ -94,32 +94,49 @@ same pipeline (`inventory/projection.expected_lost`), not from demand until a ne
 | STOCKOUT_CENSORED | over 20% of the last eight weeks' demand was reconstructed |
 
 Each carries WHAT (action, quantity, location), WHY (one sentence from the numbers), EVIDENCE (the
-inputs), EXPECTED EFFECT (cycle service before → after, or units short avoided) and CONFIDENCE. A
+inputs), EXPECTED EFFECT (cycle service before → after, or units short avoided) and CONFIDENCE.
+Purchase lines are not weighed against carrying cost: an order that MOQ or case packs inflate is
+flagged in its reason when the rounding adds more than 25%, but it is not sent for review. A
 forecast under one unit per hundred days counts as no forecast demand: reasons say so instead of
 printing a ratio such as weeks of cover.
 
 ## Economic impact
 
-- Contribution protected by a purchase = (E[(D − position)⁺] − E[(D − position − order)⁺]) ×
-  contribution per unit, over lead time + review.
-- Expedites: expected lost units the pulled-forward PO would cover × contribution per unit.
-- Critical stockouts: expected lost units before an order placed today could land × contribution
-  per unit, booked as a negative value. It is a cost of the current position, like an EXCESS line's
-  carrying cost, not value an action protects; the Action center reports it apart from the total
-  protected, so a SKU with both a CRITICAL and an EXPEDITE line is not counted twice.
-- Transfers: cross-DC shipping avoided. Excess: yearly carrying cost at 24%.
-- Portfolio figures (inventory value, contribution at risk, excess value, service now and after the
-  plan) are in `economics/impact.py`. The excess KPI counts physical stock on hand beyond 26 weeks
-  of forecast demand; the EXCESS line counts stock and open orders, because delaying or cancelling
-  an order is one of its remedies. None is a hard-coded improvement.
+Every money figure attached to an action comes from one timing-aware projection: stock today,
+open POs landing on their expected dates (a DELAYED one a week out), this week's orders after the
+supplier's median lead time, demand at its daily forecast, unmet demand lost
+(`inventory/projection.expected_lost`). Because demand is held at its forecast, the projection
+leaves out variability: it understates both the losses ahead and what safety stock buys.
+
+- Purchases: demand the order serves from its arrival until the next weekly order can land (one
+  review period later) that would otherwise be lost, × contribution per unit. Demand before it
+  lands is not credited to it.
+- Critical stockouts: demand lost before an order placed today could land × contribution per unit,
+  booked as a negative value (a cost of the current position, like an EXCESS line's carrying cost).
+  With purchases credited only after they land, a SKU's CRITICAL loss and its purchase value never
+  count the same units.
+- Expedites: demand the pulled-forward PO would serve before its current date, × contribution.
+- Transfers: cross-DC shipping avoided. Excess: yearly carrying cost at 24%. Amazon sends: the
+  reduction in expected Amazon shortfall over the replenishment window × Amazon contribution.
+- Portfolio figures (`economics/impact.py`): contribution at risk is the projection's lost demand
+  over the next 13 weeks × contribution; projected fill is the share of the next 13 weeks' forecast
+  demand served, now and with this week's orders. The excess KPI counts physical stock on hand
+  beyond 26 weeks of forecast demand; the EXCESS line counts stock and open orders, because delaying
+  or cancelling an order is one of its remedies. None is a hard-coded improvement.
+
+**Cycle service is a different quantity.** P(demand over lead time + review ≤ inventory position)
+is what orders are sized to (the order-up-to level), and the SKU pages show it before and after an
+order. It is a backorder view: an open PO counts whenever it arrives, so a SKU that is out of stock
+today can score high. It is not a forecast of fill and is not used for the money figures.
 
 ## Containers
 
 BUY lines are grouped by supplier into 40ft high-cube containers (68 m³); lines awaiting review
 (LOW_MARGIN, REVIEW_FORECAST) are not packed until a person approves them. A container is topped up
 only when it is below the supplier's minimum fill (55%): to 65%, with whole cases of that
-supplier's other SKUs, lowest cover first, never past 16 weeks of cover (on hand + on order + this
-order) and never for a low-margin, discontinued or low-confidence SKU. Filling a box for its own
-sake turns working capital into stock. The Scenario simulator calls the same routine, so its base
+supplier's other SKUs, lowest cover first, as far as eligible SKUs allow: never past 16 weeks of
+cover (on hand + on order + this order) and never for a low-margin, discontinued or low-confidence
+SKU. A container that still falls short of the minimum is flagged. Filling a box for its own sake
+turns working capital into stock. The Scenario simulator calls the same routine, so its base
 run shows the same containers as this page.
 The greedy solver sits behind `ContainerSolver`, so an OR-Tools or PuLP model can replace it.

@@ -18,9 +18,6 @@ risk = k["skus_at_stockout_risk"]
 risk_days = k["stockout_risk_weeks"] * 7
 so_new = sp["stockout_day_with_order"].to_numpy()
 helped = int(risk - ((so_new >= 0) & (so_new < risk_days)).sum())
-cal = data.eval_table("calibration").query("seed == @seed")
-p90 = float((cal["realised"] <= cal["q90"]).mean()) if len(cal) else float("nan")
-narrow = f" (optimistic: the model's P90 covered {theme.pct(p90, 0)} of outcomes in the replay)" if p90 < 0.88 else ""
 lede = (
     "QStats's plan for the business as the current process left it. "
     f"{risk} of {k['skus_monitored']} SKUs are projected to run out within {k['stockout_risk_weeks']} weeks; "
@@ -30,9 +27,11 @@ lede = (
         else "orders placed today land after all of them, so expediting and transfers are the levers there. "
     )
     + f"The plan has {k['purchase_lines']} purchase lines worth {theme.money(k['purchase_value'])}, "
-    f"{k['purchase_lines_for_review']} of them awaiting review. If all are approved, the plan's own estimate of the "
-    "demand-weighted chance of covering demand over lead time + review goes from "
-    f"{theme.pct(k['service_level_now'], 0)} to {theme.pct(k['service_level_after_plan'], 0)}{narrow}. "
+    f"{k['purchase_lines_for_review']} of them awaiting review; container top-ups add "
+    f"{theme.money(k['container_top_up_value'])}. Over the next 13 weeks, stock and open orders can serve "
+    f"{theme.pct(k['projected_fill_13w_now'], 0)} of forecast demand, and "
+    f"{theme.pct(k['projected_fill_13w_after_plan'], 0)} if this week's orders are approved (receipts on their "
+    "expected dates, unmet demand lost; demand variability is left out, so read both as optimistic). "
     f"{theme.money(k['excess_inventory_value'])} of stock on hand sits beyond {k['excess_weeks_of_cover']} weeks of "
     "forecast demand."
 )
@@ -48,12 +47,12 @@ theme.strip(
             f"{theme.money(k['purchase_value'])} at cost · {k['purchase_lines_for_review']} to review",
         ),
         ("SKUs at stockout risk", f"{risk}", f"out within {k['stockout_risk_weeks']} weeks, no new order"),
-        ("Contribution at risk", theme.money(k["contribution_at_risk"]), "expected shortfall, lead time + review"),
+        ("Contribution at risk", theme.money(k["contribution_at_risk"]), "expected lost sales, next 13 weeks"),
         ("Excess inventory", theme.money(k["excess_inventory_value"]), f"on hand beyond {k['excess_weeks_of_cover']} weeks"),
         (
-            "Modelled service",
-            f"{theme.pct(k['service_level_now'], 0)} → {theme.pct(k['service_level_after_plan'], 0)}",
-            "plan's own estimate, now → after plan",
+            "Projected fill, 13 wk",
+            f"{theme.pct(k['projected_fill_13w_now'], 0)} → {theme.pct(k['projected_fill_13w_after_plan'], 0)}",
+            "now → with this week's orders",
         ),
         (
             "Forecast bias",

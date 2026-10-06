@@ -19,6 +19,7 @@ import pandas as pd
 from qstats_planner.domain.locations import DCS, EAST, FBA, LOCATIONS, WEST
 from qstats_planner.utils.calendar import TradingCalendar
 from qstats_planner.utils.rng import stable_uniform, stream
+from qstats_planner.utils.text import has_keyword
 
 __all__ = ["DCS", "EAST", "FBA", "LOCATIONS", "WEST", "Environment", "build_environment"]
 
@@ -75,9 +76,9 @@ class Environment:
 
 
 def categorise(description: str, categories: dict[str, list[str]], default: str) -> str:
-    text = str(description).upper()
+    """The first category with a whole-word keyword in the description (plurals allowed)."""
     for name, words in categories.items():
-        if any(w in text for w in words):
+        if has_keyword(description, words, plurals=True):
             return name
     return default
 

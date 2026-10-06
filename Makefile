@@ -27,6 +27,7 @@ db:
 
 plan:
 	$(PY) scripts/run_planning_cycle.py
+	touch data/.pipeline_complete
 
 app:
 	uv run streamlit run dashboard/streamlit_app.py
@@ -46,4 +47,4 @@ requirements:
 	uv export --no-hashes --no-dev --format requirements-txt > requirements.txt
 
 clean:
-	rm -rf data/processed data/simulation data/planner.sqlite
+	rm -rf data/processed data/simulation data/planner.sqlite data/.pipeline_complete

@@ -44,6 +44,11 @@ target-version = "py312"
 select = ["E", "F", "W", "I", "B", "UP"]
 ignore = ["E731"]
 
+[tool.ruff.lint.isort]
+# dashboard/data.py: without this, ruff calls it first-party only when a data/ directory exists,
+# and a fresh checkout (CI) has none
+known-first-party = ["data"]
+
 [tool.ruff.lint.per-file-ignores]
 "scripts/*" = ["E402"]
 "dashboard/*" = ["E402"]

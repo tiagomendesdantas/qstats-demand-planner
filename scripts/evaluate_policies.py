@@ -68,12 +68,15 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--population", default="demo")
     ap.add_argument("--seeds", type=int, nargs="*")
-    ap.add_argument("--workers", type=int, default=default_workers(), help="default: min(8, CPUs, memory / 1.2 GB)")
+    ap.add_argument("--workers", type=int, default=default_workers(), help="default: min(8, CPUs, 75% of memory / 1.2 GB)")
     ap.add_argument("--variants", nargs="*")
     ap.add_argument("--scenario", default="base", choices=["base", "null", "optimistic_quotes"])
     args = ap.parse_args()
     cfg = load_config()
     seeds = args.seeds or cfg["simulation"]["seeds"]
+    if cfg["random_seed"] not in seeds:
+        # the outputs below replace the reference artefacts that the app and the README tests read
+        ap.error(f"--seeds must include the reference seed {cfg['random_seed']}")
     names = args.variants or runner.variant_names()
     out = resolve(cfg["paths"]["simulation_dir"]) / args.population
     if args.scenario != "base":

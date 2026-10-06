@@ -75,7 +75,7 @@ else:
                     "CRITICAL_STOCKOUT": "Expected loss before relief",
                     "EXCESS": "Yearly carrying cost",
                     "TRANSFER": "Shipping cost avoided",
-                }.get(top["action"], "Contribution protected"),
+                }.get(top["action"], "Contribution protected" if top["economic_impact"] >= 0 else "Expected loss"),
                 theme.money(abs(top["economic_impact"])),
             ),
             ("Confidence", f"{top['confidence']} ({top['confidence_score']:.2f})"),
@@ -169,8 +169,9 @@ theme.show(fig)
 theme.note(
     "Reconstructed demand differs from sales only in weeks with stockouts (shaded): there the planner estimates what "
     "would have sold. Weekly intervals come from backtest errors of a single week at that distance ahead, pooled "
-    "over the SKU's segment. Week-to-week noise dominates this demand, so the band widens only a little with the "
-    "horizon (and narrows where the forecast falls toward zero). Its coverage is not measured separately; the "
+    "over the SKU's segment and scaled by the week's trading days (a closed week has none). Week-to-week noise "
+    "dominates this demand, so the band widens only a little with the horizon (and narrows where the forecast falls "
+    "toward zero). Its coverage is not measured separately; the "
     "lead-time-demand quantiles that set orders were measured to run narrow (see Forecast performance)."
 )
 

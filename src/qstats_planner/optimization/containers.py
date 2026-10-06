@@ -6,7 +6,8 @@ MVP solver: a transparent greedy heuristic.
        with extra cases of that supplier's SKUs, lowest weeks of cover first, skipping low-margin,
        discontinued and low-confidence SKUs and never taking a SKU above `max_cover_weeks` of cover
        (on hand + on order + this order). Filling a box for its own sake converts working capital
-       into stock, so the top-up stops at the minimum.
+       into stock, so the top-up aims only at `top_up_to` and stops early when no eligible SKU can
+       take another case; a container still below the minimum is flagged.
     3. Report utilisation, unused capacity and purchase value per container.
 
 `ContainerSolver` is the seam: an OR-Tools / PuLP / scipy.optimize model (maximise the value of

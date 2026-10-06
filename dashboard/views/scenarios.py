@@ -52,9 +52,11 @@ lines = [
     ("Purchase value", "purchase_value", "money"),
     ("SKUs at risk, before orders", "skus_at_risk_before_orders", "int"),
     ("SKUs at risk, after orders", "skus_at_risk_after_orders", "int"),
-    ("Projected service level", "projected_service_level", "pct"),
+    ("Projected fill, next 13 weeks", "projected_fill_13w", "pct"),
+    ("Cycle service after orders (backorder view)", "projected_service_level", "pct"),
     ("Projected average inventory, 13 weeks", "projected_average_inventory_13w", "money"),
     ("Safety stock value", "safety_stock_value", "money"),
+    ("Container top-up", "container_top_up_value", "money"),
     ("Working capital committed", "working_capital_committed", "money"),
     ("Containers", "containers", "int"),
     ("Mean container utilisation", "mean_container_utilisation", "pct"),
@@ -64,9 +66,9 @@ theme.strip(
     [
         ("Purchase value", theme.money(scen["purchase_value"]), f"base {theme.money(base['purchase_value'])}"),
         (
-            "Projected service",
-            theme.pct(scen["projected_service_level"], 1),
-            f"base {theme.pct(base['projected_service_level'], 1)}",
+            "Projected fill, 13 wk",
+            theme.pct(scen["projected_fill_13w"], 1),
+            f"base {theme.pct(base['projected_fill_13w'], 1)}",
         ),
         ("SKUs at risk after orders", f"{scen['skus_at_risk_after_orders']}", f"base {base['skus_at_risk_after_orders']}"),
         (
@@ -99,12 +101,15 @@ tbl = pd.DataFrame(
     ]
 )
 theme.section("Scenario vs this week's plan")
-st.dataframe(tbl, hide_index=True, width="stretch")
+st.dataframe(tbl, hide_index=True, width="stretch", height="content")
 theme.note(
-    "Projected service level: demand-weighted probability of covering demand over lead time + review after the "
-    f"recommended orders. SKUs at risk: projected to run out within {cfg['inventory']['stockout_risk_weeks']} weeks. "
-    "Purchase lines include those awaiting review (low margin or low forecast confidence); containers pack only the "
-    "approved BUY lines. Working capital committed: stock on hand plus the purchases this plan would commit to, at cost."
+    "Projected fill: share of the next 13 weeks' forecast demand that stock, open orders on their expected dates and "
+    "this plan's orders can serve, with unmet demand lost (an expected-value projection, so optimistic). Cycle "
+    "service: demand-weighted probability that the inventory position covers demand over lead time + review, graded "
+    "for every policy against the Kaplan–Meier lead-time demand (a backorder view: open orders count whenever they "
+    f"arrive). SKUs at risk: projected to run out within {cfg['inventory']['stockout_risk_weeks']} weeks. Purchase "
+    "lines include those awaiting review; containers pack only the approved BUY lines. Working capital committed: "
+    "stock on hand plus this plan's purchases and container top-ups, at cost."
 )
 
 theme.section("Largest purchase changes")

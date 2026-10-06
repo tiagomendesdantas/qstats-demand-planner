@@ -61,6 +61,7 @@ def main() -> int:
     sp = plan["sku_plan"].assign(sku=sku)
 
     cont, cont_sum = containers_for_plan(plan, prod, view.suppliers, cfg)
+    container_top_up = float(cont_sum["top_up_value"].sum()) if len(cont_sum) else 0.0
 
     # weekly forecasts with intervals: errors of the single week h ahead, by segment and horizon bucket
     H = cfg["forecasting"]["forecast_horizon_weeks"]
@@ -68,10 +69,13 @@ def main() -> int:
     weekly_errors = st.forecast_state.extra["weekly_errors"]
     fc_rows = []
     weeks = pd.date_range(plan_date, periods=H, freq="7D")
+    # errors are per full trading week: scale them by the week's trading days, so a closed week
+    # (the year-end shutdown) has no band and a short week a narrower one
+    exposure = st.future_exposure[:H] / max(float(np.median(st.future_exposure[:H])), 1.0)
     for h in range(H):
         for i in range(n):
             e = weekly_errors.errors(st.forecast_state.segments[i], h + 1)
-            q = np.quantile(np.maximum(st.weekly_fc[h, i] + level[i] * e, 0), [0.1, 0.5, 0.8, 0.9, 0.95])
+            q = np.quantile(np.maximum(st.weekly_fc[h, i] + level[i] * e * exposure[h], 0), [0.1, 0.5, 0.8, 0.9, 0.95])
             fc_rows.append((sku[i], weeks[h], h + 1, st.weekly_fc[h, i], *q))
     fcast = pd.DataFrame(fc_rows, columns=["sku", "week", "horizon", "expected", "p10", "p50", "p80", "p90", "p95"])
 
@@ -161,6 +165,7 @@ def main() -> int:
         created_at=str(created),
         runtime_seconds=round(time.time() - t0, 1),
         transit_p90=float(st.fba.attrs["transit_p90"]),
+        container_top_up_value=container_top_up,
     )
     sel = st.forecast_state.selection
     seg_scores = sel.segment_scores.reset_index().rename(columns={"index": "segment"})

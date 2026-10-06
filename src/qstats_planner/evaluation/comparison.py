@@ -2,9 +2,10 @@
 
 Evaluation layer: reads hidden baseline demand and lost units, which no planner ever sees.
 
-Scoring window: from the fork plus the longest quoted lead time (orders QStats placed have had
-time to arrive) to the end of the data. Everything is computed per SKU first, so the totals can
-be resampled by SKU (paired bootstrap) and so both worlds are always scored on identical SKU-days.
+Scoring window: from the fork plus one review period plus the longest quoted lead time (QStats's
+first orders, placed a week into the fork, have had time to arrive) to the end of the data.
+Everything is computed per SKU first, so the totals can be resampled by SKU (paired bootstrap)
+and so both worlds are always scored on identical SKU-days.
 """
 
 from __future__ import annotations

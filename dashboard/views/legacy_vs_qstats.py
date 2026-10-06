@@ -244,13 +244,16 @@ for u in (0, 1):
         for p in (0, 1):
             name = "qstats" if (u, sv, p) == (1, 1, 1) else f"ablation_u{u}s{sv}p{p}"
             arms[name] = (
-                f"{'reconstruction' if u else '—'} · {'prior' if sv else '—'} · {'probabilistic SS' if p else '30-day SS'}"
+                f"{'reconstruction' if u else '—'} · {'prior' if sv else '—'} · "
+                f"{'probabilistic SS, KM lead times, QStats FBA rule' if p else '30-day SS, quoted lead time, legacy FBA rule'}"
             )
 ab = eff.reindex(list(arms)).rename(index=arms).astype(float) * 100
 ab = ab[[seed] + [c for c in ab.columns if c != seed]]
 ab.columns = [f"world {c}" + (" (reference)" if c == seed else "") for c in ab.columns]
 st.dataframe(
-    ab.reset_index().rename(columns={"variant": "QStats ingredients (reconstruction · seasonal prior · safety stock)"}),
+    ab.reset_index().rename(
+        columns={"variant": "QStats ingredients (reconstruction · seasonal prior · safety stock, lead times, FBA rule)"}
+    ),
     hide_index=True,
     width="stretch",
     column_config={c: st.column_config.NumberColumn(format="%+.1f%%") for c in ab.columns},
@@ -259,7 +262,9 @@ theme.note(
     "Each cell: inventory the Legacy frontier needs at that arm's fill rate ÷ the arm's inventory − 1. Positive = less "
     "stock for the same service. None = the arm's fill rate is outside the Legacy frontier. The arm with no QStats "
     "ingredient is QStats's forecaster with the 30-day rule, on raw sales, with 13 candidate models (the prior "
-    "variants drop out with the prior)."
+    "variants drop out with the prior). The third switch changes more than safety stock: it also moves from quoted "
+    "to Kaplan–Meier lead times, from the legacy FBA rule to QStats's, and counts Amazon RESERVED units at 0.5 "
+    "instead of 1.0."
 )
 
 sm95 = {s_: (g.set_index("variant").loc["qstats_sl95"], g.set_index("variant").loc["qstats"]) for s_, g in head.groupby("seed")}
@@ -283,7 +288,7 @@ def span(arm: str) -> str:
 alone = {
     "reconstruction alone scores": "ablation_u1s0p0",
     "the prior alone": "ablation_u0s1p0",
-    "probabilistic safety stock alone": "ablation_u0s0p1",
+    "probabilistic safety stock (with its lead times and FBA rule) alone": "ablation_u0s0p1",
     "the forecaster with none of them": "ablation_u0s0p0",
 }
 classes = ", ".join(f"{c} {v:.0%}" for c, v in cfg["products"]["service_level_by_class"].items())
@@ -350,18 +355,30 @@ with b:
                 "QStats inventory": st.column_config.NumberColumn(format="dollar"),
             },
         )
-    for sc, label in (("scenario_null", "honest quotes, no events"), ("scenario_optimistic_quotes", "optimistic quotes")):
+    for sc, label in (
+        ("scenario_null", "Lead time = quote, no events"),
+        ("scenario_optimistic_quotes", "Quotes at P25 of true lead time"),
+    ):
         try:
             t = data.eval_table(sc)
             t = t[t["subset"] == "headline"].set_index("variant")
             mm = matched_comparison({v: dict(r) for v, r in t.iterrows()}, LEGACY_REF, LEGACY_FAMILY, QSTATS_FAMILY)
             s1, s2 = mm["inventory_saving_pct"], mm["legacy_extra_inventory_pct"]
-            theme.note(
-                f"{label.capitalize()}: at the current process's fill rate QStats needs "
-                f"{more_less(s1) + ' inventory' if np.isfinite(s1) else 'no reading (outside its frontier)'}; "
-                "to reach QStats's fill the current rule needs "
-                f"{more_less_extra(s2) + ' inventory than QStats' if np.isfinite(s2) else 'no reading (outside its frontier)'}."
+            q_low = t.loc[QSTATS_FAMILY, "fill_rate"].min()
+            l_high = t.loc[LEGACY_FAMILY, "fill_rate"].max()
+            first = (
+                f"QStats needs {more_less(s1)} inventory"
+                if np.isfinite(s1)
+                else f"no reading: Legacy-30's fill ({theme.pct(mm['legacy_fill'])}) is below QStats's lowest setting "
+                f"({theme.pct(q_low)})"
             )
+            second = (
+                f"the current rule needs {more_less_extra(s2)} inventory than QStats"
+                if np.isfinite(s2)
+                else f"no reading: QStats's fill ({theme.pct(mm['qstats_fill'])}) is above the current rule's highest "
+                f"setting ({theme.pct(l_high)})"
+            )
+            theme.note(f"{label}: at the current process's fill rate, {first}; at QStats's fill, {second}.")
         except Exception:
             pass
 

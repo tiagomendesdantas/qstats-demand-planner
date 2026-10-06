@@ -27,7 +27,8 @@ def load_config(path: str | Path | None = None, **overrides: Any) -> dict[str, A
 
     >>> cfg = load_config(**{"inventory.excess_weeks_of_cover": 20})
     """
-    path = Path(path or os.getenv("QSTATS_CONFIG", DEFAULT_CONFIG))
+    # a relative QSTATS_CONFIG is read against the repository root, like every other path here
+    path = resolve(path or os.getenv("QSTATS_CONFIG") or DEFAULT_CONFIG)
     cfg = copy.deepcopy(_load(str(path)))
     for key, value in overrides.items():
         node = cfg

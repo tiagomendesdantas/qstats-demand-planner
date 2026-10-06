@@ -46,7 +46,8 @@ theme.note(
     f"contribution protected or shipping avoided, plus "
     f"{theme.money(_imp(['REVIEW_FORECAST', 'LOW_MARGIN']).clip(lower=0).sum())} on purchases awaiting review. "
     f"CRITICAL lines: {theme.money(-_imp(['CRITICAL_STOCKOUT']).sum())} of contribution expected to be lost "
-    "before a new order could land (an EXPEDITE line, where one exists, is how part of it is recovered)."
+    "before a new order could land. A purchase is credited only with demand it serves after it arrives, so the "
+    "two never count the same units; an EXPEDITE line, where one exists, recovers part of the CRITICAL loss."
 )
 
 tbl = pd.DataFrame(
@@ -103,9 +104,11 @@ event = st.dataframe(
 )
 theme.note(
     "Select a row to see the reasoning and record a decision. Economic impact: contribution expected to be protected "
-    "by the action (units short avoided × contribution per unit), or shipping cost avoided for transfers. Negative "
-    "values are costs of the current position: contribution expected to be lost before relief (CRITICAL) or the "
-    "yearly carrying cost of excess stock."
+    "by the action (units of demand served that would otherwise be lost × contribution per unit; for a purchase, "
+    "demand between its arrival and the next weekly order's), or shipping cost avoided for transfers. Figures come "
+    "from an expected-value projection, so they leave out what safety stock buys against variability. Negative "
+    "values are costs: contribution expected to be lost before relief (CRITICAL), the yearly carrying cost of "
+    "excess stock, or an Amazon send whose sales lose money."
 )
 
 rows = event.selection.rows if event and event.selection else []

@@ -67,6 +67,7 @@ class PlanState:
     fba: pd.DataFrame
     fba_share: np.ndarray
     history_backtest: History | None = None  # real-time (one-sided) history the backtest was fitted on
+    future_exposure: np.ndarray | None = None  # (weeks,) trading days in each forecast week
 
 
 def build_history(view, recon, prior, settings: PlanSettings) -> History:
@@ -124,9 +125,11 @@ def run_cycle(
     hist = build_history(view, recon, prior, settings)
     hist_bt = None
     if refit or previous is None:
-        # Model selection and error tables are fitted on a real-time (one-sided) reconstruction,
-        # so a backtest forecast from week w never uses days after w; the live forecast below
-        # uses the two-sided reconstruction, which is legitimate as of the plan date.
+        # Model selection and error tables are fitted on a real-time (one-sided) reconstruction:
+        # each episode's level comes from days before it. The weekday profile and the gamma
+        # dispersion are still estimated once from all clean days up to the plan date, a small
+        # look-ahead inside the backtest. The live forecast below uses the two-sided reconstruction,
+        # which is legitimate as of the plan date.
         recon_rt = reconstruct(
             cd,
             rc["planner_method"] if settings.uncensor else "no_adjustment",
@@ -176,7 +179,7 @@ def run_cycle(
     else:
         # the legacy formula on the QStats forecast: point forecast over quote + review, plus
         # `safety_days` of average forecast demand over that window
-        horizon = (quoted + R).astype(int)
+        horizon = (quoted * settings.lead_time_multiplier + R).astype(int)
         cs = cumulative_forecast(daily_fc, np.arange(daily_fc.shape[0] + 1))
         point = cs[np.clip(horizon, 0, daily_fc.shape[0]), np.arange(n)]
         target = point + settings.safety_days * point / np.maximum(horizon, 1)
@@ -213,6 +216,7 @@ def run_cycle(
         fba,
         fba_share,
         hist_bt,
+        fut_exp,
     )
 
 

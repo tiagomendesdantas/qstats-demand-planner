@@ -1,9 +1,11 @@
 """CSV client adapter.
 
 A client exports its tables as CSV files with the canonical column names (see
-`docs/client_onboarding.md`). This adapter reads them and validates them against the contract.
-It exists to prove the seam: the planner runs on these frames exactly as it runs on UCI-derived
-ones. A PostgreSQL or Azure SQL adapter would replace `pd.read_csv` with a query per table.
+`docs/client_onboarding.md`). This adapter reads them and validates them against the contract,
+and its sales lines go through the same cleaning as the UCI data (a test checks this). The planner
+itself reads a `PlannerView`, which today only the simulation builds; a constructor from these
+tables is not written yet. A PostgreSQL or Azure SQL adapter would replace `pd.read_csv` with a
+query per table.
 """
 
 from __future__ import annotations

@@ -13,10 +13,10 @@ theme.title(
     "Container planner",
     f"This week's BUY lines grouped by supplier into {sc['container']['name']} containers "
     f"({sc['container']['capacity_m3']:.0f} m³). Lines awaiting review are not packed until approved. A container "
-    f"below the {sc['minimum_container_fill']:.0%} minimum fill is topped up to {sc['container_top_up_to']:.0%} with "
-    "whole cases of that supplier's other SKUs, lowest cover first, never past "
+    f"below the {sc['minimum_container_fill']:.0%} minimum fill is topped up toward {sc['container_top_up_to']:.0%} "
+    "with whole cases of that supplier's other SKUs, lowest cover first, as far as eligible SKUs allow: never past "
     f"{sc['container_top_up_max_cover_weeks']} weeks of cover and never for a low-margin, discontinued or "
-    "low-confidence SKU.",
+    "low-confidence SKU. Containers still below the minimum are flagged.",
 )
 if summary.empty:
     theme.note("No purchase lines this week.")

@@ -83,6 +83,20 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
     so_new = stockout_day(path_new)
     # demand expected to be lost before an order placed today could land, given the open pipeline
     lost_before_new = expected_lost(stock_now, st.daily_fc, rec, np.minimum(lt_p50, horizon).astype(int))
+    # What this week's order is worth, on the same timing-aware basis: the demand it serves from its
+    # arrival until the next weekly order can land (one review period later) that would otherwise
+    # be lost. Demand before it lands is the CRITICAL line's loss, so the two never overlap. It is an
+    # expected-value projection (demand at its forecast), so it understates what safety stock buys.
+    lands = np.minimum(np.maximum(lt_p50, 1), horizon).astype(int) - 1  # the day rec_new adds the order
+    window_end = np.minimum(lands + view.review_period_days, horizon)
+    protected_units = expected_lost(stock_now, st.daily_fc, rec, window_end) - expected_lost(
+        stock_now, st.daily_fc, rec_new, window_end
+    )
+    # the next 13 weeks for the portfolio figures: open POs on their dates, unmet demand lost
+    days13 = np.full(n, min(91, horizon))
+    demand_13w = st.daily_fc[: days13[0]].sum(axis=0)
+    lost_13w_now = expected_lost(stock_now, st.daily_fc, rec, days13)
+    lost_13w_plan = expected_lost(stock_now, st.daily_fc, rec_new, days13)
     weekly13 = st.daily_fc[:91].sum(axis=0) / 13
     no_fc = weekly13 < 7 * NO_DEMAND_DAILY
     per_week = np.where(no_fc, 1.0, weekly13)
@@ -113,7 +127,7 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
     svc_after = np.array([service_level(st.ltd.samples[i], st.position[i] + st.order_qty[i]) for i in range(n)])
     short_before = np.array([expected_shortfall(st.ltd.samples[i], st.position[i]) for i in range(n)])
     short_after = np.array([expected_shortfall(st.ltd.samples[i], st.position[i] + st.order_qty[i]) for i in range(n)])
-    protected = (short_before - short_after) * cm
+    protected = protected_units * cm
 
     day = lambda k: (plan_date + pd.Timedelta(days=int(k))) if k >= 0 else pd.NaT  # noqa: E731
     rows = []
@@ -486,6 +500,11 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
             "service_before": svc_before,
             "service_after": svc_after,
             "shortfall_before": short_before,
+            "shortfall_after": short_after,
+            "protected_units": protected_units,
+            "demand_13w": demand_13w,
+            "lost_13w_now": lost_13w_now,
+            "lost_13w_with_plan": lost_13w_plan,
             "imputed_share_8w": imputed_share,
             "history_weeks": hist_weeks,
             "fba_share": st.fba_share,

@@ -70,7 +70,8 @@ business:
   categories:
     Seasonal Decor: [CHRISTMAS, XMAS, ADVENT, SANTA, REINDEER, SNOWFLAKE]
     Candles & Lighting: [CANDLE, T-LIGHT, TLIGHT, LANTERN, LIGHT, HOLDER]
-    Kitchen & Dining: [MUG, CUP, PLATE, BOWL, JAR, TEA, CAKE, BAKING, LUNCH, BOTTLE, TIN, SPOON]
+    # whole words, plurals allowed (utils/text.has_keyword)
+    Kitchen & Dining: [MUG, CUP, TEACUP, SAUCER, TEAPOT, PLATE, BOWL, JAR, TEA, CAKE, CAKESTAND, BAKING, LUNCH, BOTTLE, TIN, SPOON]
     Bags & Storage: [BAG, BOX, BASKET, STORAGE, CASE, PURSE]
     Paper & Gift Wrap: [CARD, WRAP, PAPER, RIBBON, TISSUE, NOTEBOOK, STICKER, PENCIL, PEN]
     Home Decor: [SIGN, FRAME, CLOCK, HEART, MIRROR, CUSHION, DOORMAT, HOOK, VINTAGE, GARLAND]
@@ -163,9 +164,8 @@ reconstruction:
   methods: [no_adjustment, pre_post_velocity, local_profile, model_expectation, censored_gamma]
   unknown_zero_run_probability: 0.02
   # Chosen by scripts/tune_dev.py on the dev SKUs, before any demo SKU was scored. Rule: lowest
-  # two-sided episode MAE. censored_gamma 116.8 vs local_profile 121.2 (third run, after the
-  # dispersion-floor fix and the year-one-only population; the first two runs chose local_profile,
-  # see docs/EVAL_PLAN.md change log).
+  # two-sided episode MAE. censored_gamma 119.0 vs local_profile 124.0 (fourth correction; the
+  # first two runs chose local_profile, see docs/EVAL_PLAN.md change log).
   planner_method: censored_gamma
   gamma_min_shape: 0.3
 
@@ -178,7 +178,7 @@ inventory:
   stockout_risk_weeks: 8
 
 legacy:
-  ses_alpha: 0.2            # tuned on the dev SKUs by scripts/tune_dev.py (MAE 38.7 vs 40.1 / 39.2)
+  ses_alpha: 0.2            # tuned on the dev SKUs by scripts/tune_dev.py (MAE 38.5 vs 40.0 / 39.0)
   safety_days: 30
   fba_cover_days: 30
   fba_trigger_extra_days: 14

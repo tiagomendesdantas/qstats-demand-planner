@@ -163,6 +163,8 @@ def test_readme_ablation_and_targets_match():
     readable = [eff[s]["qstats"] for s in (42, 7, 2026) if np.isfinite(eff[s]["qstats"])]
     assert len(readable) == 2  # "Full QStats can be read in two of them"
     check([f"Full QStats can be read in two of them ({signed(readable[0])} and {signed(readable[1])})"])
+    wins = sum(int(eff[s]["legacy_30d_prior"] >= eff[s]["qstats"]) for s in (42, 7, 2026) if np.isfinite(eff[s]["qstats"]))
+    assert wins == 2  # "the prior-only change beats it in both"
     for s, g in head.groupby("seed"):
         a, b = g.set_index("variant").loc["qstats_sl95"], g.set_index("variant").loc["qstats"]
         assert a["fill_rate"] >= b["fill_rate"] and a["average_inventory_value"] <= b["average_inventory_value"], s
@@ -200,7 +202,9 @@ def test_readme_live_plan_numbers_match_the_database():
             f"On that date {kp['skus_at_stockout_risk']} of {kp['skus_monitored']} SKUs are projected to run out",
             f"The plan has {kp['purchase_lines']} purchase lines worth {k(kp['purchase_value'])} "
             f"({kp['purchase_lines_for_review']} routed to a person",
-            f"goes from {kp['service_level_now'] * 100:.0f}% to {kp['service_level_after_plan'] * 100:.0f}%",
+            f"stock and open orders can serve {kp['projected_fill_13w_now'] * 100:.0f}% of forecast demand, and "
+            f"{kp['projected_fill_13w_after_plan'] * 100:.0f}% if this week's orders are approved",
+            f"container top-ups add {k(kp['container_top_up_value'])}",
         ]
     )
     own = int(sp["selection_reason"].str.startswith("SKU's own best").sum())

@@ -3,12 +3,18 @@
 inventory value          on hand at every location x landed unit cost
 purchase recommendations purchase lines and their value at cost
 SKUs at stockout risk    projected to run out within `stockout_risk_weeks` without a new order
-contribution at risk     expected units short over lead time + review at today's position,
-                         x contribution per unit
+contribution at risk     demand expected to be lost over the next 13 weeks x contribution per unit:
+                         an expected-value projection with open POs landing on their dates and
+                         unmet demand lost (demand variability ignored, so it understates)
+projected fill           share of the next 13 weeks' forecast demand that stock and receipts can
+                         serve on that projection, now and with this week's orders (if approved)
 excess inventory value   on-hand stock beyond `excess_weeks_of_cover` of forecast demand, at cost
                          (per SKU in sku_plan.excess_value; open orders are not counted)
-service level            demand-weighted probability of covering lead time + review demand,
-                         at today's position and after the recommended orders
+service level            demand-weighted probability that the inventory position covers demand
+                         over lead time + review, before and after the recommended orders. A
+                         backorder view: open orders count whenever they arrive, so a SKU that is
+                         out of stock today can still score high. It is what orders are sized to,
+                         not a forecast of fill
 forecast WAPE / bias     champion one-week-ahead errors over the last 26 scored weeks
 inventory turns          trailing 13-week cost of goods sold, annualised / inventory value
 """
@@ -18,6 +24,10 @@ from __future__ import annotations
 import numpy as np
 
 PURCHASE_ACTIONS = ["BUY", "REVIEW_FORECAST", "LOW_MARGIN"]  # every purchase line, approved or awaiting review
+
+
+def _fill(lost: np.ndarray, demand: np.ndarray, mask: np.ndarray) -> float:
+    return float(1 - lost[mask].sum() / max(demand[mask].sum(), 1e-9))
 
 
 def portfolio_kpis(view, st, plan: dict, cfg: dict) -> dict:
@@ -61,7 +71,9 @@ def portfolio_kpis(view, st, plan: dict, cfg: dict) -> dict:
         "purchase_lines_for_review": int((buys["action"] != "BUY").sum()),
         "purchase_value": float((buys["recommended_quantity"] * cost[buys["sku_idx"].to_numpy()]).sum()),
         "skus_at_stockout_risk": int(at_risk.sum()),
-        "contribution_at_risk": float((sp["shortfall_before"].to_numpy() * cm)[launched].sum()),
+        "contribution_at_risk": float((sp["lost_13w_now"].to_numpy() * cm)[launched].sum()),
+        "projected_fill_13w_now": _fill(sp["lost_13w_now"].to_numpy(), sp["demand_13w"].to_numpy(), launched),
+        "projected_fill_13w_after_plan": _fill(sp["lost_13w_with_plan"].to_numpy(), sp["demand_13w"].to_numpy(), launched),
         "excess_inventory_value": float(sp["excess_value"].sum()),
         "service_level_now": float((sp["service_before"].to_numpy() * w).sum() / max(w.sum(), 1e-9)),
         "service_level_after_plan": float((sp["service_after"].to_numpy() * w).sum() / max(w.sum(), 1e-9)),

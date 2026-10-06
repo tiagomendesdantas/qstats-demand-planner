@@ -152,8 +152,13 @@ def test_replayed_planners_see_the_world_only_through_the_planner_view():
     for f in (SRC / "simulation" / "policies").glob("*.py"):
         for n in ast.walk(ast.parse(f.read_text())):
             if isinstance(n, ast.ImportFrom) and n.module:
-                assert not n.module.startswith("qstats_planner.evaluation"), f
-                assert n.module != "qstats_planner.simulation.environment", f
+                # check every imported name in full, so `from qstats_planner.simulation import environment`
+                # is caught as surely as `from qstats_planner.simulation.environment import ...`
+                for full in [n.module] + [f"{n.module}.{a.name}" for a in n.names]:
+                    assert not full.startswith("qstats_planner.evaluation"), (f, full)
+                    assert not full.startswith("qstats_planner.simulation.environment"), (f, full)
+                if n.module in ("qstats_planner.simulation", "qstats_planner"):
+                    assert all(a.name in ("policies",) for a in n.names), f
                 if n.module == "qstats_planner.simulation.engine":
                     assert [a.name for a in n.names] == ["Decisions"], f
             if isinstance(n, ast.Import):

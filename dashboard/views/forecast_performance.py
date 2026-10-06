@@ -110,7 +110,8 @@ if len(ets):
     tot_e = (ets["ets_error"] * ets["windows"]).sum() / ets["windows"].sum()
     theme.note(
         "ETS(A, Ad, N) with smoothing, trend and damping fitted by maximum likelihood at every fourth origin of the "
-        "last 26 weeks, against the champion each SKU had 26 weeks before the plan date, so both are out of sample. "
+        "last 26 weeks, on the prior-adjusted rate per trading day (the same input as the candidates), against the "
+        "champion each SKU had 26 weeks before the plan date, so both are out of sample. "
         f"Same windows and scaled error: ETS {tot_e:.3f} vs champion {tot_c:.3f} over {int(ets['windows'].sum()):,} "
         f"windows on {len(ets)} SKUs. ETS did {'worse' if tot_e > tot_c else 'better'} overall, and "
         f"{'worse' if tot_e > tot_c else 'better'} in {int(((g['ETS error'] > g['champion error']) == (tot_e > tot_c)).sum())} "
