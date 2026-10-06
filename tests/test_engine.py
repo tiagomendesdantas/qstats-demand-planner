@@ -3,9 +3,9 @@
 import numpy as np
 import pytest
 
+from qstats_planner.domain.locations import FBA
+from qstats_planner.replenishment.common import network_position
 from qstats_planner.simulation.engine import Engine
-from qstats_planner.simulation.environment import FBA
-from qstats_planner.simulation.policies.base import network_position
 from qstats_planner.simulation.policies.legacy import LegacyPlanner
 from tests.conftest import make_env
 

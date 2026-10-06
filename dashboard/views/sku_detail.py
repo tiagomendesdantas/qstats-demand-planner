@@ -221,7 +221,8 @@ fig.update_yaxes(rangemode="tozero")
 theme.show(fig)
 theme.note(
     "Expected network stock: today's stock plus expected receipts minus expected demand. Open POs land on their "
-    "expected date; a recommended order lands after the supplier's median lead time."
+    "expected date; this week's recommended order lands after the supplier's median lead time. Orders from later weekly "
+    "reviews are not drawn, so a line that reaches zero months out is expected: next week's plan orders again."
 )
 
 a, b = st.columns(2, gap="large")

@@ -12,7 +12,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from qstats_planner.simulation.environment import FBA
+from qstats_planner.domain.locations import FBA
 
 PER_SKU_COLUMNS = [
     "demand",

@@ -44,7 +44,7 @@ def _task(args):
     t0 = time.time()
     env, prior, base = runner.build_world(_INP, cfg, population, seed, scenario)
     start, end = comparison.scoring_window(env, cfg)
-    event_skus = set(env.events["sku_idx"]) if len(env.events) else set()
+    event_skus = set(env.event_skus)  # same SKUs in every world, so headlines stay comparable
     results = []
     for name in names:
         eng, pol = runner.run_variant(base, name, cfg, prior)
@@ -161,12 +161,18 @@ def main() -> int:
                 v: comparison.summarise(g.reset_index(drop=True), cfg) for v, g in head[head["seed"] == seed].groupby("variant")
             }
             points[int(seed)] = comparison.matched_comparison(sm, runner.LEGACY_REF, runner.LEGACY_FAMILY, runner.QSTATS_FAMILY)
-        (out / "matched.json").write_text(json.dumps(points, indent=2))
         b0 = b[b["seed"] == ref_seed]
         lo, hi = b0["inventory_saving_pct"].quantile([0.05, 0.95])
+        out_of_range = float(b0["inventory_saving_pct"].isna().mean())
+        for s_ in points:
+            bs = b[b["seed"] == s_]
+            points[s_]["bootstrap_out_of_range_primary"] = float(bs["inventory_saving_pct"].isna().mean())
+            points[s_]["bootstrap_out_of_range_secondary"] = float(bs["legacy_extra_inventory_pct"].isna().mean())
+        (out / "matched.json").write_text(json.dumps(points, indent=2))
         print(
             f"\nprimary metric: inventory saving at Legacy-30's fill rate, seed {ref_seed}: "
-            f"{points[ref_seed]['inventory_saving_pct']:.3f} (90% bootstrap interval {lo:.3f} to {hi:.3f})"
+            f"{points[ref_seed]['inventory_saving_pct']:.3f} (90% bootstrap interval {lo:.3f} to {hi:.3f}, "
+            f"{out_of_range:.1%} of resamples outside the frontier)"
         )
         print("point estimate by seed:", {s_: round(float(v["inventory_saving_pct"]), 3) for s_, v in points.items()})
     print(f"total {time.time() - t0:.0f}s")

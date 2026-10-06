@@ -22,8 +22,9 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from qstats_planner.simulation.environment import DCS, EAST, FBA, LOCATIONS, Environment
-from qstats_planner.simulation.view import PlannerView, Position
+from qstats_planner.domain.locations import DCS, EAST, FBA, LOCATIONS
+from qstats_planner.domain.view import PlannerView, Position
+from qstats_planner.simulation.environment import Environment
 
 
 @dataclass

@@ -42,7 +42,7 @@ The two sheets overlap on 1–9 Dec 2010 (22,523 lines); the first sheet's invoi
 | Zero or negative price removed (write-offs, corrections) | 2,566 |
 | Missing descriptions after the rules above | 0 (filled with the SKU's modal description otherwise) |
 | Lines without a customer ID (kept) | 226,965 |
-| Returns kept as returns | 17,914 |
+| Return lines (6,179 cancel an earlier sale; 11,735 stay returns on their own date) | 17,914 |
 | Sales cancelled by an exactly matching return | 6,179 |
 | Wholesale lots flagged | 159 |
 
@@ -79,8 +79,9 @@ are filled with zero only inside that life and only on trading days.
 
 ## 5. Demo and dev populations
 
-Chosen systematically, using **only the first 52 weeks of data** (`demand/population.py`), so the
-demo set is not selected by how SKUs behaved later. Eligible: at least 150 units in those weeks,
+Chosen systematically (`demand/population.py`). Established SKUs are selected using **only the
+first 52 weeks of data**, so they are not chosen by how they behaved later; new products are drawn
+by launch date only (below). Eligible: at least 150 units in those weeks,
 launched by week 44, still selling in the last four. Each eligible SKU gets one profile, by
 precedence: SHORT_HISTORY (launched in the second half of the year), SEASONAL_KEYWORD (Christmas-
 type description), DECLINING / GROWING (relative change across January–August ≥ 1.0, measured

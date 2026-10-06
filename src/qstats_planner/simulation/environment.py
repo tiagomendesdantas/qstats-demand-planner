@@ -16,12 +16,11 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from qstats_planner.domain.locations import DCS, EAST, FBA, LOCATIONS, WEST
 from qstats_planner.utils.calendar import TradingCalendar
 from qstats_planner.utils.rng import stable_uniform, stream
 
-LOCATIONS = ("EAST_DC", "WEST_DC", "AMAZON_FBA")
-EAST, WEST, FBA = 0, 1, 2
-DCS = (EAST, WEST)
+__all__ = ["DCS", "EAST", "FBA", "LOCATIONS", "WEST", "Environment", "build_environment"]
 
 
 @dataclass
@@ -44,6 +43,7 @@ class Environment:
     fba_transit: np.ndarray  # (n_weeks, n_sku) transit days for a transfer shipped that week
     _lt: dict = field(default_factory=dict)
     scenario: str = "base"
+    event_skus: tuple = ()                 # SKUs with events in the base design (excluded from headlines)
 
     @property
     def n_sku(self) -> int:
@@ -334,6 +334,7 @@ def build_environment(
     end_day = np.where(disappeared, last_seen, len(days) - 1)
 
     events = build_events(products, launch_day, end_day, disappeared, days, cfg, seed)
+    event_skus = tuple(sorted(set(events["sku_idx"].astype(int)))) if len(events) else ()
     if scenario == "null":
         events = events.iloc[0:0]
     baseline = apply_uplift(raw, events)
@@ -424,5 +425,6 @@ def build_environment(
         fba_transit=fba_transit,
         _lt=lt,
         scenario=scenario,
+        event_skus=event_skus,
     )
     return env

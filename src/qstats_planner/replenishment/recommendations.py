@@ -24,10 +24,10 @@ import json
 import numpy as np
 import pandas as pd
 
+from qstats_planner.domain.locations import EAST, FBA, WEST
 from qstats_planner.inventory.lead_time_demand import expected_shortfall, service_level
 from qstats_planner.inventory.projection import expected_lost, project, scheduled_receipts, stockout_day
 from qstats_planner.replenishment.order_quantity import round_up_to_pack
-from qstats_planner.simulation.environment import EAST, FBA, WEST
 
 SEVERITY_RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1, "INFO": 0}
 DC_NAMES = {EAST: "EAST_DC", WEST: "WEST_DC"}

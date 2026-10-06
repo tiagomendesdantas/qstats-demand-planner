@@ -3,13 +3,15 @@
 The protection interval is the supplier lead time L plus the review period R: an order placed now
 must cover demand until the order placed at the next review arrives. L is uncertain (its
 distribution comes from `lead_time`), and demand over any fixed horizon is uncertain (backtest
-errors, `forecasting.uncertainty`). The two combine exactly as a mixture, with no Monte Carlo:
+errors, `forecasting.uncertainty`). The two combine as a mixture, computed without simulation:
 
     P(D <= d) = sum_k p(L = l_k) * P( F(x_k) + level * x_k/7 * e <= d ),   x_k = l_k + R
 
 where F(x) is the cumulative point forecast over the next x days, `level` the SKU's recent mean
 weekly units and e the pooled scaled errors at that horizon. Quantiles of D are read from the
-weighted mixture of those points (floored at zero).
+weighted mixture of those points (floored at zero). Approximations: the lead-time distribution is
+compressed to at most 16 points, errors are stored as 200 quantiles per segment and horizon
+bucket, and lead time is assumed independent of forecast error.
 
     safety stock     = Q_alpha(D) - E[D]
     order-up-to S    = Q_alpha(D)                     (alpha = cycle service level)

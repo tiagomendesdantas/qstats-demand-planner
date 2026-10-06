@@ -205,11 +205,13 @@ fig.update_layout(hovermode="closest")
 theme.show(fig)
 c90, c95 = (cal["realised"] <= cal["q90"]).mean(), (cal["realised"] <= cal["q95"]).mean()
 theme.note(
-    "From the controlled replay (World Q): at every weekly plan QStats recorded its quantiles of demand over lead "
-    "time + review; the outcome uses the lead time that SKU's order would actually have had that week. "
-    f"Overall the P90 held {c90:.0%} of outcomes and the P95 {c95:.0%}"
+    "From the controlled replay (World Q, all 200 SKUs, overlapping weekly windows, no interval computed): at every "
+    "weekly plan QStats recorded its quantiles of demand over lead time + review; the outcome uses the lead time that "
+    f"SKU's order would actually have had that week. Overall the P90 held {c90:.0%} of outcomes and the P95 {c95:.0%}"
     + (
-        ": the intervals run narrow, most in the peak season. Reported, not hidden; recalibrating them is on the roadmap."
+        ": the intervals run narrow, most in the peak season. Two likely causes, both by construction: the errors come "
+        "from the windows used to select the champion, and windows more than 10% reconstructed (busy stockout periods) "
+        "are not scored. Recalibrating them is the first roadmap item."
         if c95 < 0.93
         else "."
     )

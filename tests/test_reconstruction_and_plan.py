@@ -132,15 +132,15 @@ def test_fba_plan_respects_source_stock(env, cfg, neutral_prior):
         assert view.products.at[move["sku_idx"], "fba_enabled"]
 
 
-PLANNER_PACKAGES = ["demand", "forecasting", "inventory", "replenishment", "optimization", "economics", "simulation/policies"]
+PLANNER_PACKAGES = ["demand", "forecasting", "inventory", "replenishment", "optimization", "economics", "domain"]
 
 
-def test_planner_code_never_imports_the_evaluation_layer():
+def test_planner_code_depends_on_neither_the_simulation_nor_the_evaluation_layer():
+    """The planner must run on a client's data unchanged, and must not be able to read the hidden truth."""
     for pkg in PLANNER_PACKAGES:
         for f in (SRC / pkg).glob("*.py"):
             tree = ast.parse(f.read_text())
             names = [n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module]
             names += [a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names]
-            assert not any("evaluation" in m for m in names), f
-            if pkg != "simulation/policies":
-                assert not any(m.endswith("simulation.engine") or m.endswith("simulation.runner") for m in names), f
+            assert not any(m.startswith("qstats_planner.evaluation") for m in names), f
+            assert not any(m.startswith("qstats_planner.simulation") for m in names), f

@@ -17,9 +17,9 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
 from qstats_planner.domain import tables  # noqa: E402
+from qstats_planner.domain.locations import LOCATIONS  # noqa: E402
 from qstats_planner.inventory import lead_time as ltmod  # noqa: E402
 from qstats_planner.simulation import runner  # noqa: E402
-from qstats_planner.simulation.environment import LOCATIONS  # noqa: E402
 from qstats_planner.utils.config import database_url, load_config, resolve  # noqa: E402
 
 

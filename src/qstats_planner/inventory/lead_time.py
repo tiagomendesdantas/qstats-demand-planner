@@ -42,8 +42,9 @@ class LeadTimeDistribution:
 
 
 def kaplan_meier(times: np.ndarray, events: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Discrete distribution of event times. Mass left after the last event (censored tail) is
-    placed at the largest observed time, which is conservative for a planner."""
+    """Discrete distribution of event times. Mass left after the last event (orders still open
+    beyond every receipt) is placed at the largest observed age. That is a lower bound for those
+    orders' lead times, so the far tail is, if anything, understated."""
     order = np.argsort(times, kind="stable")
     t, e = times[order], events[order]
     uniq = np.unique(t[e])

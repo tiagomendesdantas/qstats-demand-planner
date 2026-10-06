@@ -19,9 +19,10 @@ from __future__ import annotations
 
 import numpy as np
 
+from qstats_planner.domain.locations import EAST, FBA, WEST
+from qstats_planner.domain.view import PlannerView
 from qstats_planner.replenishment.order_quantity import round_orders, round_up_to_pack, split_by_share
 from qstats_planner.simulation.engine import Decisions
-from qstats_planner.simulation.environment import EAST, FBA, WEST
 from qstats_planner.simulation.policies.base import (
     dc_east_share,
     network_position,
@@ -29,7 +30,6 @@ from qstats_planner.simulation.policies.base import (
     weekly,
     weekly_trading_days,
 )
-from qstats_planner.simulation.view import PlannerView
 
 
 class LegacyPlanner:

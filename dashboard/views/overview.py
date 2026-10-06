@@ -14,11 +14,12 @@ sp = sp.merge(prods[["sku_idx", "category", "unit_cost"]], on="sku_idx")
 
 risk = k["skus_at_stockout_risk"]
 lede = (
+    "QStats's plan for the business as the current process left it. "
     f"{risk} of {k['skus_monitored']} SKUs run out within {k['stockout_risk_weeks']} weeks unless something changes. "
-    f"This week's plan buys {theme.money(k['purchase_value'])} across {k['purchase_lines']} purchase lines and lifts the "
-    f"demand-weighted chance of covering lead-time demand from {theme.pct(k['service_level_now'], 0)} to "
-    f"{theme.pct(k['service_level_after_plan'], 0)}. {theme.money(k['excess_inventory_value'])} sits beyond "
-    f"{k['excess_weeks_of_cover']} weeks of cover."
+    f"This week's plan buys {theme.money(k['purchase_value'])} across {k['purchase_lines']} purchase lines; by the plan's "
+    f"own model the demand-weighted chance of covering lead-time demand goes from {theme.pct(k['service_level_now'], 0)} to "
+    f"{theme.pct(k['service_level_after_plan'], 0)} (an upper bound: this model's intervals ran narrow in the replay). "
+    f"{theme.money(k['excess_inventory_value'])} sits beyond {k['excess_weeks_of_cover']} weeks of cover."
 )
 theme.title("Executive overview", lede)
 
@@ -35,14 +36,14 @@ theme.strip(
         ("Contribution at risk", theme.money(k["contribution_at_risk"]), "expected shortfall over lead time"),
         ("Excess inventory", theme.money(k["excess_inventory_value"]), f"beyond {k['excess_weeks_of_cover']} weeks of cover"),
         (
-            "Service level",
+            "Modelled service",
             f"{theme.pct(k['service_level_now'], 0)} → {theme.pct(k['service_level_after_plan'], 0)}",
-            "cycle service, now → after plan",
+            "plan's own estimate, now → after plan",
         ),
         (
             "Forecast bias",
             theme.signed_pct(k["forecast_bias_26w"]),
-            f"WAPE {theme.pct(k['forecast_wape_26w'], 0)}, last 26 weeks",
+            f"WAPE {theme.pct(k['forecast_wape_26w'], 0)}, champions' backtest, 26 weeks",
         ),
     ]
 )
@@ -136,8 +137,9 @@ if m:
     theme.callout(
         "In a controlled replay of the same business over the past year, QStats did <b>not</b> hold less inventory at the "
         f"service level the current process delivers ({theme.pct(m['legacy_fill'], 1)} fill): it needed "
-        f"{theme.signed_pct(-m['inventory_saving_pct'])} inventory there, within noise. What it changed is the operating point: "
-        f"{theme.pct(m['qstats_fill'], 1)} fill, where the current rule would need "
-        f"{theme.signed_pct(m['legacy_extra_inventory_pct'])} more inventory than QStats. Details and intervals on "
-        "<b>Legacy vs QStats</b>."
+        f"{abs(m['inventory_saving_pct']) * 100:.1f}% {'more' if m['inventory_saving_pct'] < 0 else 'less'} there, within "
+        f"noise. It ran the business at {theme.pct(m['qstats_fill'], 1)} fill, where the current rule would need "
+        f"{abs(m['legacy_extra_inventory_pct']) * 100:.1f}% more inventory than QStats; that is positive in all three "
+        "replicate worlds but not distinguishable from zero in any one. The current process with only a seasonal prior "
+        "added did as well or better in two of three worlds. Details on <b>Legacy vs QStats</b>."
     )

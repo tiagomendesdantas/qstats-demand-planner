@@ -36,16 +36,54 @@ theme.title(
 )
 
 lo, hi = b0["inventory_saving_pct"].quantile([0.05, 0.95])
+slo, shi = b0["legacy_extra_inventory_pct"].quantile([0.05, 0.95])
+
+
+def more_less(v: float) -> str:
+    """A saving share in words: positive saving = less inventory."""
+    return f"{abs(v) * 100:.1f}% {'less' if v > 0 else 'more'}"
+
+
+others = [s_ for s_ in meta if s_ != str(seed)]
+oor = m.get("bootstrap_out_of_range_primary", float("nan"))
+other_sec = ", ".join(f"{meta[s_]['legacy_extra_inventory_pct'] * 100:.1f}%" for s_ in others)
+other_prim = ", ".join(more_less(meta[s_]["inventory_saving_pct"]) for s_ in others)
 theme.callout(
     f"<b>At today's service level, no inventory saving.</b> To deliver the current process's fill rate "
-    f"({theme.pct(m['legacy_fill'])}), QStats needs {theme.signed_pct(-m['inventory_saving_pct'])} inventory "
-    f"(90% interval {theme.signed_pct(-hi)} to {theme.signed_pct(-lo)}; other replicate worlds "
-    f"{', '.join(theme.signed_pct(-meta[s]['inventory_saving_pct']) for s in meta if s != str(seed))}). "
-    "<b>Where it differs is what more service costs:</b> "
-    f"QStats runs at {theme.pct(m['qstats_fill'])} fill, and the current rule "
-    f"would need {theme.signed_pct(m['legacy_extra_inventory_pct'])} more inventory than QStats to get there. "
-    "This was the pre-registered test, run once (docs/EVAL_PLAN.md)."
+    f"({theme.pct(m['legacy_fill'])}), QStats needs {more_less(m['inventory_saving_pct'])} inventory "
+    f"(90% interval: from {more_less(hi)} to {more_less(lo)}; {oor * 100:.1f}% of resamples fell outside QStats's "
+    f"frontier and are left out). Other replicate worlds: {other_prim}. "
+    f"<b>At higher service the direction favours QStats, but not conclusively:</b> QStats runs at "
+    f"{theme.pct(m['qstats_fill'])} fill, where the current rule would need "
+    f"{m['legacy_extra_inventory_pct'] * 100:.1f}% more inventory than QStats (90% interval {theme.signed_pct(slo)} to "
+    f"{theme.signed_pct(shi)}; {other_sec} "
+    "in the other worlds). The test was fixed in advance and rerun once after a logged correction (docs/EVAL_PLAN.md)."
 )
+money = (
+    (L["lost_contribution"] - Q["lost_contribution"])
+    + (L["cross_dc_cost"] - Q["cross_dc_cost"])
+    - (Q["holding_cost"] - L["holding_cost"])
+)
+theme.strip(
+    [
+        ("Contribution recovered", theme.money(L["lost_contribution"] - Q["lost_contribution"]), "fewer lost sales"),
+        ("Cross-DC shipping saved", theme.money(L["cross_dc_cost"] - Q["cross_dc_cost"]), "fewer split shipments"),
+        ("Extra carrying cost", theme.money(Q["holding_cost"] - L["holding_cost"]), "24% a year on the larger stock"),
+        ("Net over the scored days", theme.money(money), "before end-of-period stock"),
+        (
+            "Extra excess at the end",
+            theme.money(Q["excess_inventory_value"] - L["excess_inventory_value"]),
+            "beyond 26 weeks of demand",
+        ),
+    ]
+)
+L90 = ref.loc["legacy_90d"] if "legacy_90d" in ref.index else None
+if L90 is not None:
+    theme.note(
+        f"In plain terms: QStats ran the business like the current process with about 90 days of safety stock "
+        f"(Legacy-90: {theme.pct(L90['fill_rate'])} fill with {theme.money(L90['average_inventory_value'])}), on "
+        f"{(1 - Q['average_inventory_value'] / L90['average_inventory_value']) * 100:.0f}% less inventory than that."
+    )
 
 rows = [
     ("Forecast WAPE (1 week)", "wape", "pct", -1),
@@ -171,6 +209,20 @@ theme.note(
     "Each cell: inventory the Legacy frontier needs at that arm's fill rate ÷ the arm's inventory − 1. Positive = less "
     "stock for the same service. None = the arm's fill rate is outside the Legacy frontier. Probabilistic safety "
     "stock learned from censored sales is worse than the 30-day rule: stockout correction has to come first."
+)
+
+sm95 = {s_: (g.set_index("variant").loc["qstats_sl95"], g.set_index("variant").loc["qstats"]) for s_, g in head.groupby("seed")}
+wins95 = sum(
+    int(a["fill_rate"] >= b["fill_rate"] and a["average_inventory_value"] <= b["average_inventory_value"])
+    for a, b in sm95.values()
+)
+prior_wins = int((eff.loc["legacy_30d_prior"] >= eff.loc["qstats"]).sum())
+theme.callout(
+    f"<b>Read the ablation plainly.</b> The current process with only the seasonal prior added matches or beats full "
+    f"QStats in {prior_wins} of {eff.shape[1]} worlds. No QStats ingredient helps on its own; reconstruction is needed "
+    f"for the others to help. And QStats's own class targets (A 97%, B 95%, C 90%) are not its best setting: a uniform "
+    f"95% gave more fill with less stock in {wins95} of {len(sm95)} worlds. The class targets were fixed before the "
+    "replay and are kept."
 )
 
 a, b = st.columns(2, gap="large")

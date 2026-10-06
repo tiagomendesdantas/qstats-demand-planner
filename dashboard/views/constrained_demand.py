@@ -20,10 +20,13 @@ theme.title(
     "retailer's lost sales.",
 )
 
-retro = scores[scores["mode"] == "retrospective"].set_index("method")
+scores["channels"] = scores["channels"].fillna("all") if "channels" in scores else "all"
+retro = scores[(scores["mode"] == "retrospective") & (scores["channels"] == "all")].set_index("method")
+stocked = scores[(scores["mode"] == "retrospective") & (scores["channels"] != "all")].set_index("method")
 none = retro.loc["no_adjustment"]
 chosen = cfg["reconstruction"]["planner_method"]
 c = retro.loc[chosen]
+dark_units = none["lost_units"] - (stocked.at["no_adjustment", "lost_units"] if len(stocked) else none["lost_units"])
 theme.strip(
     [
         ("Censored channel-days", theme.units(none["censored_days"]), f"{int(none['episodes']):,} stockout episodes"),
@@ -31,6 +34,7 @@ theme.strip(
         ("Recovered by the planner", theme.pct(c["recovery_pct"], 0), f"{chosen.replace('_', ' ')} method"),
         ("Episode error", f"{c['episode_mae']:,.0f} u", f"vs {none['episode_mae']:,.0f} without adjustment"),
         ("Episode bias", f"{c['episode_bias']:+,.0f} u", "negative = still under-estimates"),
+        ("On never-stocked channels", theme.pct(dark_units / none["lost_units"], 0), "of lost demand: invisible to every method"),
     ]
 )
 
@@ -42,7 +46,8 @@ names = {
     "model_expectation": "Smoothed level at episode start",
     "censored_gamma": "Censored likelihood (gamma, EM)",
 }
-t = scores.assign(
+scope = st.radio("Channels scored", ["all", "stocked at least once"], horizontal=True)
+t = scores[scores["channels"] == scope].assign(
     Method=scores["method"].map(names), Mode=scores["mode"].map({"retrospective": "two-sided", "real_time": "real time"})
 )
 t["Used by planner"] = np.where(t["method"] == chosen, "✓", "")
@@ -80,16 +85,28 @@ theme.note(
 )
 
 theme.section("One SKU: true demand, sales and reconstruction")
-top = ep.groupby(["sku", "channel"])["baseline"].sum().sort_values(ascending=False).reset_index()
-opts = [f"{r.sku}|{r.channel}" for r in top.head(40).itertuples()]
+ep["stocked"] = ep["stocked"].astype(bool) if "stocked" in ep else True
+top = ep.groupby(["sku", "channel"]).agg(baseline=("baseline", "sum"), stocked=("stocked", "first"))
+top = top.sort_values("baseline", ascending=False).reset_index().head(40)
+never = dict(zip(top["sku"] + "|" + top["channel"], ~top["stocked"], strict=True))
+opts = [f"{r.sku}|{r.channel}" for r in top.itertuples()]
+first_stocked = next((k for k, o in enumerate(opts) if not never[o]), 0)
 pick = st.selectbox(
-    "SKU and channel (most censored first)",
+    "SKU and channel (most lost demand first)",
     opts,
+    index=first_stocked,
     format_func=lambda o: (
         f"{o.split('|')[0]} · {prods.at[o.split('|')[0], 'description'].title()} · {o.split('|')[1].lower()} channel"
+        + (" · never stocked" if never[o] else "")
     ),
 )
 sku, ch = pick.split("|")
+if never[pick]:
+    theme.callout(
+        "This channel was never stocked after the warm-up, so its sales are zero every week and no method can see "
+        "the demand: a channel that has never had stock looks exactly like a channel with no demand. Both planners "
+        "share this blind spot; a channel-launch rule is on the roadmap."
+    )
 w = wk[(wk["sku"] == sku) & (wk["channel"] == ch)].copy()
 w["week"] = pd.to_datetime(w["week"])
 fig = theme.figure(340, y_title="units / week")

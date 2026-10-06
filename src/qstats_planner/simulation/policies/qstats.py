@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import numpy as np
 
+from qstats_planner.domain.locations import EAST, FBA, WEST
+from qstats_planner.domain.view import PlannerView
 from qstats_planner.replenishment.policy import PlanSettings, run_cycle
 from qstats_planner.simulation.engine import Decisions
-from qstats_planner.simulation.environment import EAST, FBA, WEST
-from qstats_planner.simulation.view import PlannerView
 
 
 class QStatsPlanner:

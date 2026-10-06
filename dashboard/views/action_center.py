@@ -15,6 +15,8 @@ theme.title(
 recs = data.recommendations()
 prods = data.table("products")
 recs = recs.merge(prods[["sku", "supplier_id"]].rename(columns={"supplier_id": "_s"}), on="sku", how="left")
+plan = data.table("sku_plan")  # already carries the sku column
+recs = recs.merge(plan[["sku", "stock_now"]], on="sku", how="left")
 
 f1, f2, f3, f4, f5, f6 = st.columns(6)
 sev = f1.multiselect("Severity", ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"], default=["CRITICAL", "HIGH", "MEDIUM", "LOW"])
@@ -24,12 +26,13 @@ loc = f4.multiselect("Location", sorted(recs["location"].unique()), placeholder=
 cat = f5.multiselect("Category", sorted(recs["category"].unique()), placeholder="All categories")
 seg = f6.multiselect("Segment", sorted(recs["segment"].unique()), placeholder="All segments")
 
-view = recs[recs["severity"].isin(sev)] if sev else recs
+pre = recs
 for col, sel in (("action", act), ("supplier_id", sup), ("location", loc), ("category", cat), ("segment", seg)):
     if sel:
-        view = view[view[col].isin(sel)]
+        pre = pre[pre[col].isin(sel)]
+view = pre[pre["severity"].isin(sev)] if sev else pre
 
-counts = view["severity"].value_counts()
+counts = pre["severity"].value_counts()  # counts ignore the severity filter, so hidden INFO lines still show
 st.html(
     " &nbsp;&nbsp; ".join(
         f"{theme.chip(s)} <span class='qs-chip'>{int(counts.get(s, 0))}</span>"
@@ -49,6 +52,7 @@ tbl = pd.DataFrame(
         "Action": view["action"],
         "Quantity": view["recommended_quantity"],
         "Projected stockout": pd.to_datetime(view["stockout_date"]),
+        "On hand": view["stock_now"],
         "Inventory position": view["inventory_position"],
         "Confidence": view["confidence"],
         "Economic impact": view["economic_impact"],
@@ -77,7 +81,13 @@ event = st.dataframe(
         "Priority": st.column_config.NumberColumn(width="small"),
         "Quantity": st.column_config.NumberColumn(format="localized"),
         "Projected stockout": st.column_config.DateColumn(format="MMM D"),
-        "Inventory position": st.column_config.NumberColumn(format="localized"),
+        "On hand": st.column_config.NumberColumn(
+            format="localized", help="Units in the network now: DCs, Amazon and in transit to Amazon (Amazon reserved at half)"
+        ),
+        "Inventory position": st.column_config.NumberColumn(
+            format="localized",
+            help="On hand + in transit to Amazon + open purchase orders. A SKU can be out of stock with a large position.",
+        ),
         "Economic impact": st.column_config.NumberColumn(
             format="dollar", help="Expected contribution protected (or cost avoided); negative = carrying cost of excess"
         ),

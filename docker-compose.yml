@@ -1,11 +1,21 @@
+# `docker compose up`: the app container builds the data and the database on first start (about six
+# minutes, the UCI file is downloaded); the API starts once the database exists.
 services:
   app:
     build: .
     ports: ["8501:8501"]
     volumes: ["./data:/app/data"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import pathlib, sys; sys.exit(0 if pathlib.Path('data/planner.sqlite').exists() else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
   api:
     build: .
     command: uvicorn qstats_planner.api.main:app --host 0.0.0.0 --port 8000
     ports: ["8000:8000"]
     volumes: ["./data:/app/data"]
-    depends_on: [app]
+    depends_on:
+      app:
+        condition: service_healthy

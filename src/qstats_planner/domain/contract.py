@@ -207,6 +207,13 @@ TABLES: dict[str, dict[str, str]] = {
         "minimum_order_value": "float",
     },
     "locations": {"location_id": "string", "kind": "string"},
+    "promotions": {
+        "sku": "string",
+        "start_date": "datetime",
+        "end_date": "datetime",
+        "kind": "string",
+        "announced_date": "datetime",
+    },
 }
 
 _KIND_CHECK = {

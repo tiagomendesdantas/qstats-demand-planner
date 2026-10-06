@@ -42,6 +42,10 @@ def benchmark(cfg: dict) -> None:
     truth = np.stack([B[:, :, 0] + B[:, :, 1], B[:, :, 2]], axis=2)
     rc = cfg["reconstruction"]
     status, cen = R.classify(cd, rc["unknown_zero_run_probability"])
+    # channels stocked at least once after the warm-up: a channel never stocked looks exactly like a
+    # channel with no demand, and no method can recover it from sales alone
+    warm = eng.warm_end
+    stocked = (np.nan_to_num(cd.opening[warm:]) > 0).any(axis=0) & cd.active[warm:].any(axis=0)
     rows, recs = [], {}
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -57,11 +61,16 @@ def benchmark(cfg: dict) -> None:
                     unknown_zero_run_p=rc["unknown_zero_run_probability"],
                     gamma_min_shape=rc["gamma_min_shape"],
                 )
+                mode = "retrospective" if two else "real_time"
+                rows.append(
+                    {"method": m, "mode": mode, "channels": "all", **score(cd.sales, rec.adjusted, truth, cen, cd.active)}
+                )
                 rows.append(
                     {
                         "method": m,
-                        "mode": "retrospective" if two else "real_time",
-                        **score(cd.sales, rec.adjusted, truth, cen, cd.active),
+                        "mode": mode,
+                        "channels": "stocked at least once",
+                        **score(cd.sales, rec.adjusted, truth, cen & stocked[None], cd.active),
                     }
                 )
                 if two:
@@ -71,6 +80,7 @@ def benchmark(cfg: dict) -> None:
     pd.DataFrame(rows).to_parquet(bdir / "scores.parquet", index=False)
     ep = episode_table(cd.sales, recs[rc["planner_method"]], truth, cen, cd.active)
     ep["sku"] = env.products.loc[ep["sku_idx"], "sku"].to_numpy()
+    ep["stocked"] = stocked[ep["sku_idx"].to_numpy(), ep["channel"].to_numpy()]
     ep["channel"] = np.where(ep["channel"] == 0, "DIRECT", "AMAZON")
     ep["start_date"] = env.days[ep["start_day"].to_numpy()]
     ep["end_date"] = env.days[ep["end_day"].to_numpy()]
@@ -89,12 +99,13 @@ def benchmark(cfg: dict) -> None:
         idx = pd.MultiIndex.from_product([env.days[: W * 7 : 7], env.products["sku"]], names=["week", "sku"])
         df = pd.DataFrame({k: v.ravel() for k, v in base.items()}, index=idx).reset_index()
         df["channel"] = name
+        df["stocked"] = df["sku"].map(dict(zip(env.products["sku"], stocked[:, c], strict=True)))
         frames.append(df[(df["baseline"] > 0) | (df["observed"] > 0)])
     pd.concat(frames, ignore_index=True).to_parquet(bdir / "weekly.parquet", index=False)
     print(
         "benchmark:",
         pd.DataFrame(rows)
-        .query("mode == 'retrospective'")[["method", "episode_mae", "episode_bias", "recovery_pct"]]
+        .query("mode == 'retrospective'")[["method", "channels", "episode_mae", "episode_bias", "recovery_pct"]]
         .round(3)
         .to_string(index=False),
     )

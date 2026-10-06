@@ -72,10 +72,11 @@ windows, too few to choose among 25 candidates without fitting noise.
   least three non-overlapping windows.
 - Re-selection every four weeks.
 
-Segments (as of the plan date, `demand/segmentation.py`): NEW_PRODUCT (< 26 weeks since launch),
-INTERMITTENT (average demand interval ≥ 1.32 weeks), SEASONAL (Christmas-type), TRENDING
-(|relative change over 26 seasonally adjusted weeks| ≥ 0.35), VOLATILE (CV² of non-zero weeks ≥
-0.49), REGULAR.
+Segments (as of the plan date, `demand/segmentation.py`), first rule that matches: NEW_PRODUCT
+(< 26 weeks since launch), INTERMITTENT (average demand interval ≥ 1.32 weeks), SEASONAL
+(Christmas-type), TRENDING (|relative change over 26 seasonally adjusted weeks| ≥ 0.35), VOLATILE
+(CV² of non-zero weeks ≥ 0.49), REGULAR. Because INTERMITTENT comes first, most Christmas products,
+which sell on few weeks, land there; the SEASONAL segment is small.
 
 **Challenger (as of the plan date, not used to plan).** statsmodels ETS(A, Ad, N) with smoothing,
 trend and damping fitted by maximum likelihood, refitted at every fourth origin of the last 52
@@ -101,9 +102,13 @@ level alone did the same for SKUs dormant for months.
 
 **Calibration is measured, not assumed.** In the controlled replay QStats recorded its quantiles at
 every weekly plan; the realised value uses the lead time that SKU's order would have had that week.
-Over 6,560 SKU-weeks the P80 held 75.6% of outcomes, the P90 83.9% and the P95 89.1%. The intervals
-are too narrow, most in the September–December season (P95: 84.7%) and for new products (77.1%);
-REGULAR SKUs are close to nominal (P90 90.1%, P95 96.1%). Recalibration is the first roadmap item.
+Over 6,560 SKU-weeks (all 200 SKUs, overlapping windows, no interval computed) the P80 held 75.6% of
+outcomes, the P90 83.9% and the P95 89.1%. The intervals are too narrow, most in the
+September–December season (P95: 84.7%) and for new products (77.1%); REGULAR SKUs (513 SKU-weeks)
+are close to nominal (P90 90.1%, P95 96.1%). Two likely causes, both by construction: the error
+quantiles come from the champion's errors on the same windows used to select it (a winner's curse),
+and windows more than 10% reconstructed are not scored, which leaves out busy stockout periods.
+Recalibration is the first roadmap item.
 
 ## Confidence
 

@@ -20,8 +20,8 @@ import numpy as np  # noqa: E402
 
 from qstats_planner.demand import reconstruction as R  # noqa: E402
 from qstats_planner.evaluation.benchmark import score  # noqa: E402
+from qstats_planner.replenishment.common import ses_levels, weekly  # noqa: E402
 from qstats_planner.simulation import runner  # noqa: E402
-from qstats_planner.simulation.policies.base import ses_levels, weekly  # noqa: E402
 from qstats_planner.utils.config import load_config, resolve  # noqa: E402
 
 

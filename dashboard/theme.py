@@ -247,8 +247,11 @@ def shade_runs(fig: go.Figure, x: np.ndarray, flags: np.ndarray, color: str, lab
                 j += 1
             # label the first run only; passing an empty label would make Plotly print "new text"
             label_args = (
-                {"annotation_text": label, "annotation_position": "top left",
-                 "annotation_font": dict(size=11, color=palette()["muted"])}
+                {
+                    "annotation_text": label,
+                    "annotation_position": "top left",
+                    "annotation_font": dict(size=11, color=palette()["muted"]),
+                }
                 if not shown
                 else {}
             )

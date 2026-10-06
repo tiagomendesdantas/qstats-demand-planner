@@ -16,21 +16,23 @@ Kaplan–Meier over each supplier's purchase orders: received orders give comple
 orders older than half the quote are right-censored at their age (late orders are exactly the ones
 still open, so dropping them would bias the distribution short). With few receipts the estimate is
 shrunk toward the quote with eight pseudo-observations spread around it (log-sd 0.12). Mass beyond
-the last observed receipt sits at the largest observed age, which is conservative.
+the last observed receipt (orders still open past every receipt) sits at the largest observed age:
+a lower bound for those orders, so the far tail is, if anything, understated.
 
 ## Demand over the protection interval
 
 An order placed now must cover demand until the order placed at the next review arrives: lead time
-L plus review period R (7 days). Both are uncertain, and they combine as an exact mixture, without
-Monte Carlo:
+L plus review period R (7 days). Both are uncertain, and they combine as a mixture computed without
+simulation:
 
     P(D ≤ d) = Σ_k p(L = l_k) · P( F(l_k + R) + level · (l_k + R)/7 · e ≤ d )
 
 F(x) is the cumulative point forecast over the next x days (weekly forecasts spread over trading
 days by the daily seasonal factor), e the pooled scaled errors at that horizon, and level the SKU's
-error scale (see the forecasting methodology). The lead-time distribution is compressed to at most
-16 support points; quantiles are read from the weighted mixture by inverted CDF, which is exact for
-a mixture with discrete atoms.
+error scale (see the forecasting methodology). Quantiles are read from the weighted mixture by
+inverted CDF. Approximations: the lead-time distribution is compressed to at most 16 support points,
+errors are stored as 200 quantiles per segment and horizon bucket (one representative horizon per
+bucket), and lead time is assumed independent of forecast error.
 
     order-up-to level   S  = Q_α(D)                 α = the product's cycle service target
     safety stock        SS = Q_α(D) − E[D]
@@ -66,8 +68,9 @@ demand, then from the other DC.
 
     projected stock(d) = stock now + receipts expected by d − expected demand through d
 
-Open POs land on their expected date (a DELAYED PO is assumed one week out); a recommended order
-lands after the supplier's median lead time. The projected stockout date is the first day the
+Open POs land on their expected date (a DELAYED PO is assumed one week out); this week's recommended
+order lands after the supplier's median lead time. Orders from later weekly reviews are not in the
+projection, so a line that still reaches zero months out is expected: next week's plan orders again. The projected stockout date is the first day the
 projection reaches zero. Expected lost units before relief come from a lost-sales recursion over the
 same pipeline (`inventory/projection.expected_lost`), not from demand until a new order lands.
 
