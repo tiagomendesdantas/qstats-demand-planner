@@ -296,7 +296,7 @@ make demo
 downloads and verifies the UCI file, cleans it, selects the SKUs, runs the simulation and the
 policy comparison, builds the SQLite database, runs the planning cycle and starts the app at
 http://localhost:8501 (open it in a browser; the server runs headless). On a laptop with 8 cores and
-8 GB of memory the whole run takes about ten minutes. The comparison runs parallel processes of
+8 GB of memory the whole run takes about ten to twelve minutes. The comparison runs parallel processes of
 about 1 GB each, by default min(8, CPUs, 75% of memory / 1.2 GB); `make demo WORKERS=4` uses fewer. Step by
 step:
 
@@ -316,7 +316,9 @@ uv run pytest -q
 `scripts/tune_dev.py` reproduces the two tuned development settings (the legacy smoothing constant
 and the reconstruction method); the other development decisions are recorded in
 [`docs/EVAL_PLAN.md`](docs/EVAL_PLAN.md) but not scripted. `scripts/evaluate_policies.py` runs the
-comparison on either population. A clean clone reproduced the reported results exactly. CI runs
+comparison on either population. A clean clone of commit `e4f66df` reproduced every result file
+byte for byte and every database table except timestamps (checksums in the
+[`docs/EVAL_PLAN.md`](docs/EVAL_PLAN.md) change log). CI runs
 lint, the unit tests and a Docker build; the tests that check the README's numbers and the API need
 the pipeline's outputs and run locally after `make demo`.
 

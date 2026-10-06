@@ -396,3 +396,9 @@ QStats reaches 92.7%, above Legacy-120's 92.0%: both matched metrics are out of 
   the reference seed is refused instead of overwriting its artefacts; the replay's automatic
   approval of review lines is documented; and wording across the README, the docs and the app.
 
+  Reproduction: a clean clone of commit `e4f66df` (the raw file placed by hand, then every pipeline
+  step and the tests) took 11 min 10 s on an 8-core, 8 GB laptop and reproduced all 28 result files
+  under data/processed and data/simulation/demo byte for byte (run.json, which records the run
+  time, excepted) and all 32 database tables apart from timestamps; 57 tests passed. SHA-256
+  prefixes: matched.json af972fbe5a51e280, summary.parquet 2520669facd0ebc9, bootstrap.parquet
+  0daddfd18d89da94, benchmark/scores.parquet 70afe335bf080c9d.
