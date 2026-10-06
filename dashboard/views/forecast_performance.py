@@ -67,6 +67,45 @@ theme.note(
     "too few windows and use the pooled champion."
 )
 
+theme.section("Challenger: statsmodels ETS fitted per SKU")
+ets = data.table("ets_challenger")
+ets = ets[ets["windows"] > 0]
+if len(ets):
+    g = (
+        ets.groupby("segment")
+        .apply(
+            lambda d: pd.Series(
+                {
+                    "SKUs": len(d),
+                    "windows": int(d["windows"].sum()),
+                    "champion error": (d["champion_error"] * d["windows"]).sum() / d["windows"].sum(),
+                    "ETS error": (d["ets_error"] * d["windows"]).sum() / d["windows"].sum(),
+                    "SKUs where ETS wins": (d["ets_error"] < d["champion_error"]).mean() * 100,
+                }
+            ),
+            include_groups=False,
+        )
+        .reset_index()
+    )
+    st.dataframe(
+        g,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "champion error": st.column_config.NumberColumn(format="%.3f"),
+            "ETS error": st.column_config.NumberColumn(format="%.3f"),
+            "SKUs where ETS wins": st.column_config.NumberColumn(format="%.0f%%"),
+        },
+    )
+    tot_c = (ets["champion_error"] * ets["windows"]).sum() / ets["windows"].sum()
+    tot_e = (ets["ets_error"] * ets["windows"]).sum() / ets["windows"].sum()
+    theme.note(
+        f"ETS(A, Ad, N) with smoothing, trend and damping fitted by maximum likelihood at every fourth origin of "
+        f"the last 52 weeks, on the same windows and scaled error as the champion: {tot_e:.3f} vs {tot_c:.3f} "
+        f"over {int(ets['windows'].sum()):,} windows. Fitting parameters per SKU on one or two years of lumpy "
+        "weekly demand overfits; pooling the choice by segment does better. Reported, not used to plan."
+    )
+
 theme.section("By SKU")
 c2 = champ.merge(sp[["sku_idx", "segment", "champion_model"]], on="sku_idx").merge(
     prods[["sku_idx", "description"]], on="sku_idx"

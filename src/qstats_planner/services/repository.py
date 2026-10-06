@@ -95,6 +95,9 @@ class Repository:
             return self._q("SELECT * FROM plan_forecast_performance WHERE sku = :sku", sku=sku)
         return self._q("SELECT * FROM plan_forecast_performance")
 
+    def ets_challenger(self) -> pd.DataFrame:
+        return self._q("SELECT * FROM plan_ets_challenger")
+
     def segment_scores(self) -> pd.DataFrame:
         return self._q("SELECT * FROM plan_segment_scores")
 

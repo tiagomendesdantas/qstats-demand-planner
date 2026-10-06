@@ -187,7 +187,7 @@ stockout correction has to come first.
 (−9.7 / −9.0 / −8.9% vs −20.6 / −19.8 / −20.1%).
 
 **Calibration (QStats, 6,560 SKU-weeks):** the P80 covered 75.6%, P90 83.9%, P95 89.1%. Intervals
-are too narrow, most in the peak season (P95 84.7%), for new products (77.5%) and for the 54
+are too narrow, most in the peak season (P95 84.7%), for new products (77.1%) and for the 54
 seasonal SKU-weeks (77.8%). REGULAR SKUs are close to nominal (P90 90.1%, P95 96.1%).
 
 **Event SKUs (32, reported separately):** QStats 94.9% fill with $96.7k inventory; Legacy-30 90.2%

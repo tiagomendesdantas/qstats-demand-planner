@@ -169,7 +169,7 @@ st.dataframe(
 )
 theme.note(
     "Each cell: inventory the Legacy frontier needs at that arm's fill rate ÷ the arm's inventory − 1. Positive = less "
-    "stock for the same service. Empty = the arm's fill rate is outside the Legacy frontier. Probabilistic safety "
+    "stock for the same service. None = the arm's fill rate is outside the Legacy frontier. Probabilistic safety "
     "stock learned from censored sales is worse than the 30-day rule: stockout correction has to come first."
 )
 

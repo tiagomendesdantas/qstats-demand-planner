@@ -24,6 +24,7 @@ from qstats_planner.demand.reconstruction import STATUS_NAMES  # noqa: E402
 from qstats_planner.domain import tables  # noqa: E402
 from qstats_planner.economics.impact import portfolio_kpis  # noqa: E402
 from qstats_planner.forecasting import pipeline  # noqa: E402
+from qstats_planner.forecasting.challengers import ets_challenger  # noqa: E402
 from qstats_planner.forecasting.uncertainty import recent_level  # noqa: E402
 from qstats_planner.optimization.containers import plan_containers  # noqa: E402
 from qstats_planner.replenishment import recommendations  # noqa: E402
@@ -48,6 +49,7 @@ def main() -> int:
         created = pd.Timestamp.now().floor("s")
         plan = recommendations.build(view, st, cfg, created)
         diag = pipeline.diagnostics(st.history, st.forecast_state)
+        ets = ets_challenger(st.history, st.forecast_state)
     prod = view.products
     n = view.n_sku
     sku = prod["sku"].to_numpy()
@@ -195,6 +197,7 @@ def main() -> int:
         ("plan_container_summary", cont_sum),
         ("plan_forecast_performance", diag.assign(sku=sku[diag["sku_idx"].to_numpy()])),
         ("plan_segment_scores", seg_scores),
+        ("plan_ets_challenger", ets.assign(sku=sku[ets["sku_idx"].to_numpy()])),
         ("plan_lead_time_distribution", pd.DataFrame(lt_rows)),
         ("plan_kpis", pd.DataFrame([{"key": k, "value": json.dumps(v, default=float)} for k, v in kpis.items()])),
     ):
