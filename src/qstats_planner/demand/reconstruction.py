@@ -39,8 +39,12 @@ from scipy.special import gammaincc
 
 NOT_ACTIVE, NORMAL, CONFIRMED, LIKELY, UNKNOWN, PROMOTION, LIQUIDATION = range(7)
 STATUS_NAMES = {
-    NOT_ACTIVE: "NOT_ACTIVE", NORMAL: "NORMAL", CONFIRMED: "CONFIRMED_STOCKOUT",
-    LIKELY: "LIKELY_CONSTRAINED", UNKNOWN: "UNKNOWN_AVAILABILITY", PROMOTION: "PROMOTION",
+    NOT_ACTIVE: "NOT_ACTIVE",
+    NORMAL: "NORMAL",
+    CONFIRMED: "CONFIRMED_STOCKOUT",
+    LIKELY: "LIKELY_CONSTRAINED",
+    UNKNOWN: "UNKNOWN_AVAILABILITY",
+    PROMOTION: "PROMOTION",
     LIQUIDATION: "LIQUIDATION",
 }
 METHODS = ("no_adjustment", "pre_post_velocity", "local_profile", "model_expectation", "censored_gamma")
@@ -49,20 +53,20 @@ DIRECT, AMAZON = 0, 1
 
 @dataclass
 class ChannelData:
-    sales: np.ndarray       # (T, n, 2)
-    opening: np.ndarray     # (T, n, 2) NaN where the snapshot is missing
+    sales: np.ndarray  # (T, n, 2)
+    opening: np.ndarray  # (T, n, 2) NaN where the snapshot is missing
     closing: np.ndarray
-    active: np.ndarray      # (T, n, 2) bool: trading day, SKU launched, channel exists
-    warmup: np.ndarray      # (T,) bool: stock was ample, every day is NORMAL
-    event: np.ndarray       # (T, n) int: 0 none, PROMOTION, LIQUIDATION
-    season: np.ndarray      # (T, n) seasonal prior factor per day
+    active: np.ndarray  # (T, n, 2) bool: trading day, SKU launched, channel exists
+    warmup: np.ndarray  # (T,) bool: stock was ample, every day is NORMAL
+    event: np.ndarray  # (T, n) int: 0 none, PROMOTION, LIQUIDATION
+    season: np.ndarray  # (T, n) seasonal prior factor per day
 
 
 @dataclass
 class Reconstruction:
-    status: np.ndarray      # (T, n, 2) int8
-    adjusted: np.ndarray    # (T, n, 2) units
-    imputed: np.ndarray     # (T, n, 2) bool
+    status: np.ndarray  # (T, n, 2) int8
+    adjusted: np.ndarray  # (T, n, 2) units
+    imputed: np.ndarray  # (T, n, 2) bool
     confidence: np.ndarray  # (T, n, 2) 0-1 for imputed days, NaN otherwise
     method: str
 
@@ -84,7 +88,7 @@ def channel_data(view, season_daily: np.ndarray) -> ChannelData:
     ev = view.events()
     for e in ev.itertuples() if len(ev) else []:
         if e.start_day <= view.t:
-            event[e.start_day: min(e.end_day, view.t) + 1, e.sku_idx] = PROMOTION if e.kind == "PROMOTION" else LIQUIDATION
+            event[e.start_day : min(e.end_day, view.t) + 1, e.sku_idx] = PROMOTION if e.kind == "PROMOTION" else LIQUIDATION
     return ChannelData(sales, opening, closing, active, warm, event, season_daily[:T])
 
 
@@ -190,9 +194,17 @@ def gamma_tail_mean(mu: np.ndarray, k: np.ndarray, s: np.ndarray) -> np.ndarray:
 # --------------------------------------------------------------------------- reconstruct
 
 
-def reconstruct(cd: ChannelData, method: str, days_dow: np.ndarray, two_sided: bool = True,
-                window: int = 28, min_clean: int = 8, unknown_zero_run_p: float = 0.02,
-                em_iterations: int = 4, gamma_min_shape: float = 0.3) -> Reconstruction:
+def reconstruct(
+    cd: ChannelData,
+    method: str,
+    days_dow: np.ndarray,
+    two_sided: bool = True,
+    window: int = 28,
+    min_clean: int = 8,
+    unknown_zero_run_p: float = 0.02,
+    em_iterations: int = 4,
+    gamma_min_shape: float = 0.3,
+) -> Reconstruction:
     status, censored = classify(cd, unknown_zero_run_p)
     sales = cd.sales
     if method == "no_adjustment":
@@ -203,7 +215,7 @@ def reconstruct(cd: ChannelData, method: str, days_dow: np.ndarray, two_sided: b
     start, end = _episodes(censored, act)
     T = sales.shape[0]
     wd = weekday_profile(cd, clean, days_dow)
-    prof = wd[days_dow][:, None, None] * cd.season[:, :, None]          # expected relative level
+    prof = wd[days_dow][:, None, None] * cd.season[:, :, None]  # expected relative level
     prof = np.where(act, prof, 0.0)
 
     # windows: `window` calendar days x 1.4 (to hold ~`window` trading days) before / after

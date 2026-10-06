@@ -104,7 +104,7 @@ def select_populations(daily: pd.DataFrame, life: pd.DataFrame, data_start: pd.T
     rng = stream(seed, "population", "new")
     order = new_pool[rng.permutation(len(new_pool))]
     for name, k, offset in (("demo", n_new, 0), ("dev", n_dev_new, n_new)):
-        skus = order[offset: offset + k]
+        skus = order[offset : offset + k]
         chosen.append(pd.DataFrame({"sku": skus, "profile": "NEW_PRODUCT", "population": name}))
 
     out = pd.concat(chosen, ignore_index=True)

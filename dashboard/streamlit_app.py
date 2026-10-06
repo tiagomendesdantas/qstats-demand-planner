@@ -1,6 +1,6 @@
 """QStats Demand & Inventory Planner: dashboard entry point.
 
-    streamlit run dashboard/streamlit_app.py
+streamlit run dashboard/streamlit_app.py
 """
 
 from __future__ import annotations
@@ -14,8 +14,9 @@ import streamlit as st  # noqa: E402
 
 st.set_page_config(page_title="QStats Demand & Inventory Planner", page_icon="▦", layout="wide")
 
-import data  # noqa: E402
 import theme  # noqa: E402
+
+import data  # noqa: E402
 
 pages = {
     "Plan": [

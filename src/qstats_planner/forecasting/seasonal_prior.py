@@ -28,15 +28,23 @@ MID_MONTH_DOY = np.array([15, 46, 74, 105, 135, 166, 196, 227, 258, 288, 319, 34
 
 class SeasonalPrior:
     def __init__(self, monthly: dict[int, np.ndarray], sku_group: np.ndarray, info: dict | None = None):
-        self.monthly = monthly          # group -> 12 factors (mean 1)
+        self.monthly = monthly  # group -> 12 factors (mean 1)
         self.sku_group = np.asarray(sku_group, int)
         self.info = info or {}
 
     # ------------------------------------------------------------------ fit
 
     @classmethod
-    def fit(cls, daily: pd.DataFrame, exclude: set[str], start: pd.Timestamp, weeks: int,
-            keywords: list[str], shrink_k: float, min_units: float = 100.0) -> SeasonalPrior:
+    def fit(
+        cls,
+        daily: pd.DataFrame,
+        exclude: set[str],
+        start: pd.Timestamp,
+        weeks: int,
+        keywords: list[str],
+        shrink_k: float,
+        min_units: float = 100.0,
+    ) -> SeasonalPrior:
         end = pd.Timestamp(start) + pd.Timedelta(weeks=weeks) - pd.Timedelta(days=1)
         d = daily[(daily["date"] >= start) & (daily["date"] <= end) & ~daily["sku"].isin(exclude)]
         span = d.groupby("sku")["date"].agg(["min", "max"])

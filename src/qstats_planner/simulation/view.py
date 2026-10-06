@@ -17,14 +17,36 @@ import pandas as pd
 from qstats_planner.utils.calendar import TradingCalendar
 
 PUBLIC_PRODUCT_COLUMNS = [
-    "sku", "description", "category", "supplier_id", "supplier_idx", "selling_price", "unit_cost",
-    "case_pack", "moq", "cube_per_case", "abc_class", "target_service_level", "fba_enabled",
-    "preferred_source_dc", "fulfillment_cost_dc", "fulfillment_cost_fba", "advertising_cost",
-    "contribution_dc", "contribution_fba", "contribution_margin", "contribution_margin_pct",
+    "sku",
+    "description",
+    "category",
+    "supplier_id",
+    "supplier_idx",
+    "selling_price",
+    "unit_cost",
+    "case_pack",
+    "moq",
+    "cube_per_case",
+    "abc_class",
+    "target_service_level",
+    "fba_enabled",
+    "preferred_source_dc",
+    "fulfillment_cost_dc",
+    "fulfillment_cost_fba",
+    "advertising_cost",
+    "contribution_dc",
+    "contribution_fba",
+    "contribution_margin",
+    "contribution_margin_pct",
 ]
 PUBLIC_SUPPLIER_COLUMNS = [
-    "supplier_id", "supplier_name", "country", "quoted_lead_time_days", "minimum_order_value",
-    "minimum_container_fill", "container_capacity_m3",
+    "supplier_id",
+    "supplier_name",
+    "country",
+    "quoted_lead_time_days",
+    "minimum_order_value",
+    "minimum_container_fill",
+    "container_capacity_m3",
 ]
 
 
@@ -38,21 +60,38 @@ def _ro(a: np.ndarray) -> np.ndarray:
 class Position:
     """Inventory position components at the plan date, per SKU and location."""
 
-    on_hand: np.ndarray        # (n_sku, n_loc) physical units
-    available: np.ndarray      # (n_sku, n_loc) sellable units
-    fba_reserved: np.ndarray   # (n_sku,)
-    fba_transfer: np.ndarray   # (n_sku,) units moving between Amazon fulfilment centres
-    fba_inbound: np.ndarray    # (n_sku,) shipped from a DC, not yet received at Amazon
-    dc_committed: np.ndarray   # (n_sku, 2) allocated to outbound FBA transfers, not yet shipped
+    on_hand: np.ndarray  # (n_sku, n_loc) physical units
+    available: np.ndarray  # (n_sku, n_loc) sellable units
+    fba_reserved: np.ndarray  # (n_sku,)
+    fba_transfer: np.ndarray  # (n_sku,) units moving between Amazon fulfilment centres
+    fba_inbound: np.ndarray  # (n_sku,) shipped from a DC, not yet received at Amazon
+    dc_committed: np.ndarray  # (n_sku, 2) allocated to outbound FBA transfers, not yet shipped
 
 
 class PlannerView:
-    def __init__(self, *, t: int, days: pd.DatetimeIndex, calendar: TradingCalendar, trading: np.ndarray,
-                 products: pd.DataFrame, suppliers: pd.DataFrame, sales: np.ndarray,
-                 opening_available: np.ndarray, closing_available: np.ndarray, on_hand_hist: np.ndarray,
-                 snapshot_known: np.ndarray, position: Position, purchase_orders: list[dict],
-                 lead_time_history: pd.DataFrame, events: pd.DataFrame, transfers: list[dict],
-                 first_planning_day: int, launch_day_known: np.ndarray, review_period_days: int):
+    def __init__(
+        self,
+        *,
+        t: int,
+        days: pd.DatetimeIndex,
+        calendar: TradingCalendar,
+        trading: np.ndarray,
+        products: pd.DataFrame,
+        suppliers: pd.DataFrame,
+        sales: np.ndarray,
+        opening_available: np.ndarray,
+        closing_available: np.ndarray,
+        on_hand_hist: np.ndarray,
+        snapshot_known: np.ndarray,
+        position: Position,
+        purchase_orders: list[dict],
+        lead_time_history: pd.DataFrame,
+        events: pd.DataFrame,
+        transfers: list[dict],
+        first_planning_day: int,
+        launch_day_known: np.ndarray,
+        review_period_days: int,
+    ):
         self.t = t
         self.date = days[t]
         self.days = days[: t + 1]
@@ -101,14 +140,34 @@ class PlannerView:
                 status, actual = "IN_TRANSIT", None
             else:
                 status, actual = "OPEN", None
-            rows.append({
-                "po_id": po["po_id"], "sku_idx": po["sku_idx"], "supplier_id": po["supplier_id"],
-                "qty_east": po["qty"][0], "qty_west": po["qty"][1], "quantity": po["qty"][0] + po["qty"][1],
-                "order_day": po["order_day"], "expected_day": po["expected_day"],
-                "actual_day": actual, "status": status, "policy": po.get("policy", ""),
-            })
-        cols = ["po_id", "sku_idx", "supplier_id", "qty_east", "qty_west", "quantity", "order_day",
-                "expected_day", "actual_day", "status", "policy"]
+            rows.append(
+                {
+                    "po_id": po["po_id"],
+                    "sku_idx": po["sku_idx"],
+                    "supplier_id": po["supplier_id"],
+                    "qty_east": po["qty"][0],
+                    "qty_west": po["qty"][1],
+                    "quantity": po["qty"][0] + po["qty"][1],
+                    "order_day": po["order_day"],
+                    "expected_day": po["expected_day"],
+                    "actual_day": actual,
+                    "status": status,
+                    "policy": po.get("policy", ""),
+                }
+            )
+        cols = [
+            "po_id",
+            "sku_idx",
+            "supplier_id",
+            "qty_east",
+            "qty_west",
+            "quantity",
+            "order_day",
+            "expected_day",
+            "actual_day",
+            "status",
+            "policy",
+        ]
         return pd.DataFrame(rows, columns=cols)
 
     def open_purchase_orders(self) -> pd.DataFrame:
@@ -121,11 +180,17 @@ class PlannerView:
         po = self.purchase_orders()
         po = po[po["status"].isin(["RECEIVED", "OPEN", "IN_TRANSIT", "DELAYED"])]
         recv = po["status"] == "RECEIVED"
-        sim = pd.DataFrame({
-            "po_id": po["po_id"], "supplier_id": po["supplier_id"],
-            "lead_time_days": np.where(recv, po["actual_day"].fillna(0) - po["order_day"], self.t - po["order_day"]).astype(float),
-            "event": recv.to_numpy(), "order_day": po["order_day"].astype(float),
-        })
+        sim = pd.DataFrame(
+            {
+                "po_id": po["po_id"],
+                "supplier_id": po["supplier_id"],
+                "lead_time_days": np.where(recv, po["actual_day"].fillna(0) - po["order_day"], self.t - po["order_day"]).astype(
+                    float
+                ),
+                "event": recv.to_numpy(),
+                "order_day": po["order_day"].astype(float),
+            }
+        )
         return pd.concat([hist[["po_id", "supplier_id", "lead_time_days", "event", "order_day"]], sim], ignore_index=True)
 
     # ------------------------------------------------------------------ events and transfers

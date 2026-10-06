@@ -24,10 +24,10 @@ import numpy as np
 @dataclass(frozen=True)
 class ModelSpec:
     name: str
-    family: str           # naive | ma | ses | holt | croston | sba | tsb | snaive
+    family: str  # naive | ma | ses | holt | croston | sba | tsb | snaive
     params: tuple
-    complexity: int       # used by the parsimony rule (lower = simpler)
-    seasonal: bool        # uses the seasonal prior
+    complexity: int  # used by the parsimony rule (lower = simpler)
+    seasonal: bool  # uses the seasonal prior
 
 
 def candidate_models(cfg: dict, with_prior: bool = True) -> list[ModelSpec]:
@@ -36,8 +36,11 @@ def candidate_models(cfg: dict, with_prior: bool = True) -> list[ModelSpec]:
     base += [ModelSpec(f"ma{k}", "ma", (k,), 1, False) for k in f["ma_windows"]]
     base += [ModelSpec(f"ses{a:.1f}", "ses", (a,), 2, False) for a in f["ses_alphas"]]
     a = f["croston_alpha"]
-    base += [ModelSpec("croston", "croston", (a,), 3, False), ModelSpec("sba", "sba", (a,), 3, False),
-             ModelSpec("tsb", "tsb", tuple(f["tsb_params"]), 3, False)]
+    base += [
+        ModelSpec("croston", "croston", (a,), 3, False),
+        ModelSpec("sba", "sba", (a,), 3, False),
+        ModelSpec("tsb", "tsb", tuple(f["tsb_params"]), 3, False),
+    ]
     base += [ModelSpec(f"holt_damped{k + 1}", "holt", tuple(p), 4, False) for k, p in enumerate(f["holt_params"])]
     out = list(base)
     if with_prior:
@@ -48,9 +51,9 @@ def candidate_models(cfg: dict, with_prior: bool = True) -> list[ModelSpec]:
 
 @dataclass
 class States:
-    level: np.ndarray     # (M, W, n) state after each week
-    trend: np.ndarray     # (M, W, n)
-    phi: np.ndarray       # (M,)
+    level: np.ndarray  # (M, W, n) state after each week
+    trend: np.ndarray  # (M, W, n)
+    phi: np.ndarray  # (M,)
 
 
 def run_states(models: list[ModelSpec], y_plain: np.ndarray, y_seas: np.ndarray, valid: np.ndarray) -> States:
@@ -141,9 +144,16 @@ def phi_sums(phi: np.ndarray, H: int) -> np.ndarray:
     return np.cumsum(phi[:, None] ** h[None, :], axis=1)
 
 
-def weekly_paths(states: States, models: list[ModelSpec], origin: int, H: int,
-                 es_plain: np.ndarray, es_seas: np.ndarray, units_hist: np.ndarray,
-                 exposure_hist: np.ndarray) -> np.ndarray:
+def weekly_paths(
+    states: States,
+    models: list[ModelSpec],
+    origin: int,
+    H: int,
+    es_plain: np.ndarray,
+    es_seas: np.ndarray,
+    units_hist: np.ndarray,
+    exposure_hist: np.ndarray,
+) -> np.ndarray:
     """(M, H, n) unit forecasts for weeks origin+1 .. origin+H.
 
     es_* are (H, n) exposure x season for those weeks (season = 1 for the plain variant).

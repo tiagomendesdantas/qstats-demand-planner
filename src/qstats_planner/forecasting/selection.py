@@ -27,10 +27,10 @@ from qstats_planner.forecasting.models import ModelSpec
 
 @dataclass
 class Selection:
-    champion: np.ndarray          # (n,) model index per SKU
-    reason: list[str]             # (n,) why
+    champion: np.ndarray  # (n,) model index per SKU
+    reason: list[str]  # (n,) why
     segment_scores: pd.DataFrame  # segment x model scaled error
-    sku_scores: np.ndarray        # (M, n) mean scaled error per SKU (NaN if unscored)
+    sku_scores: np.ndarray  # (M, n) mean scaled error per SKU (NaN if unscored)
 
 
 def scaled_errors(forecast: np.ndarray, actual: np.ndarray, scored: np.ndarray, scale: np.ndarray) -> np.ndarray:
@@ -50,8 +50,15 @@ def _pick(scores: pd.Series, models: list[ModelSpec], parsimony: float) -> int:
     return int(min(ok, key=lambda m: (models[m].complexity, s[m])))
 
 
-def select(models: list[ModelSpec], err: np.ndarray, segments: np.ndarray, horizon: np.ndarray,
-           previous: np.ndarray | None, cfg: dict, min_origins: int) -> Selection:
+def select(
+    models: list[ModelSpec],
+    err: np.ndarray,
+    segments: np.ndarray,
+    horizon: np.ndarray,
+    previous: np.ndarray | None,
+    cfg: dict,
+    min_origins: int,
+) -> Selection:
     f = cfg["forecasting"]
     M, W, n = err.shape
     sku_mean = np.nanmean(err, axis=1) if W else np.full((M, n), np.nan)  # (M, n)
@@ -89,7 +96,13 @@ def select(models: list[ModelSpec], err: np.ndarray, segments: np.ndarray, horiz
         h = max(int(horizon[i]), 1)
         blocks = err[:, ::h, i]
         nb = np.isfinite(blocks).sum(axis=1)
-        own = np.where(nb >= f["sku_override_min_blocks"], np.nanmean(np.where(np.isfinite(blocks), blocks, np.nan), axis=1), np.nan) if blocks.size else np.full(M, np.nan)
+        own = (
+            np.where(
+                nb >= f["sku_override_min_blocks"], np.nanmean(np.where(np.isfinite(blocks), blocks, np.nan), axis=1), np.nan
+            )
+            if blocks.size
+            else np.full(M, np.nan)
+        )
         if np.all(np.isnan(own)) or np.isnan(own[champion[i]]):
             continue
         best = int(np.nanargmin(own))
@@ -107,6 +120,10 @@ def select(models: list[ModelSpec], err: np.ndarray, segments: np.ndarray, horiz
             new, old = seg_s.iloc[champion[i]], seg_s.iloc[p]
             if np.isfinite(old) and np.isfinite(new) and new > old * (1 - f["switch_margin"]):
                 champion[i] = p
-                reason[i] = reason[i].replace("segment champion", "incumbent kept (switch margin not met)", 1) if "segment" in reason[i] else "incumbent kept (switch margin not met)"
+                reason[i] = (
+                    reason[i].replace("segment champion", "incumbent kept (switch margin not met)", 1)
+                    if "segment" in reason[i]
+                    else "incumbent kept (switch margin not met)"
+                )
     del counts
     return Selection(champion, reason, seg_scores, sku_mean)

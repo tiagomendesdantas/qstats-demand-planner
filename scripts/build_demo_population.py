@@ -30,8 +30,10 @@ def main() -> int:
     full = sku_metrics(daily[daily["sku"].isin(pop["sku"])], cfg)
     full.to_parquet(d / "sku_metrics.parquet", index=False)
     print(pop.groupby(["population", "profile"]).size().unstack(0).fillna(0).astype(int).to_string())
-    print(f"demo {int((pop.population == 'demo').sum())}  dev {int((pop.population == 'dev').sum())}  "
-          f"overlap {len(set(pop.sku[pop.population == 'demo']) & set(pop.sku[pop.population == 'dev']))}")
+    print(
+        f"demo {int((pop.population == 'demo').sum())}  dev {int((pop.population == 'dev').sum())}  "
+        f"overlap {len(set(pop.sku[pop.population == 'demo']) & set(pop.sku[pop.population == 'dev']))}"
+    )
     print("disappeared later (demo):", int(pop.loc[pop.population == "demo", "disappeared"].sum()))
     return 0
 

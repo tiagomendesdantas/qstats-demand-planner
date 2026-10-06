@@ -53,33 +53,51 @@ def main() -> int:
     sup["receipts"] = [lts[s].n_received for s in sup["supplier_id"]]
     sup["open_orders"] = [lts[s].n_open for s in sup["supplier_id"]]
     sup[[c.name for c in tables.suppliers.columns]].to_sql("suppliers", eng_db, if_exists="append", index=False)
-    pd.DataFrame({"location_id": LOCATIONS, "kind": ["DC", "DC", "FBA"]}).to_sql("locations", eng_db, if_exists="append", index=False)
+    pd.DataFrame({"location_id": LOCATIONS, "kind": ["DC", "DC", "FBA"]}).to_sql(
+        "locations", eng_db, if_exists="append", index=False
+    )
 
     po = view.purchase_orders()
     d = lambda s: pd.to_datetime(days[0]) + pd.to_timedelta(s, unit="D")  # noqa: E731
-    po_out = pd.DataFrame({
-        "po_id": po["po_id"], "sku": env.products.loc[po["sku_idx"], "sku"].to_numpy(), "supplier_id": po["supplier_id"],
-        "quantity": po["quantity"], "qty_east": po["qty_east"], "qty_west": po["qty_west"],
-        "order_date": d(po["order_day"]).dt.date, "expected_arrival": d(po["expected_day"]).dt.date,
-        "actual_arrival": d(po["actual_day"]).dt.date, "status": po["status"], "policy": po["policy"],
-    })
+    po_out = pd.DataFrame(
+        {
+            "po_id": po["po_id"],
+            "sku": env.products.loc[po["sku_idx"], "sku"].to_numpy(),
+            "supplier_id": po["supplier_id"],
+            "quantity": po["quantity"],
+            "qty_east": po["qty_east"],
+            "qty_west": po["qty_west"],
+            "order_date": d(po["order_day"]).dt.date,
+            "expected_arrival": d(po["expected_day"]).dt.date,
+            "actual_arrival": d(po["actual_day"]).dt.date,
+            "status": po["status"],
+            "policy": po["policy"],
+        }
+    )
     po_out.to_sql("purchase_orders", eng_db, if_exists="append", index=False)
     obs.rename(columns={"event": "received"})[["po_id", "supplier_id", "lead_time_days", "received"]].to_sql(
-        "lead_time_observations", eng_db, if_exists="append", index=False)
+        "lead_time_observations", eng_db, if_exists="append", index=False
+    )
 
     start = world.warm_end
     T, n, L = world.sales.shape
     idx = pd.MultiIndex.from_product([range(start, T), range(n), range(L)], names=["day", "sku_idx", "loc"])
-    snap = pd.DataFrame({
-        "on_hand": world.closing_on_hand[start:].ravel(), "available": world.closing_available[start:].ravel(),
-        "sales": world.sales[start:].ravel(), "receipts": world.receipts[start:].ravel(),
-    }, index=idx).reset_index()
+    snap = pd.DataFrame(
+        {
+            "on_hand": world.closing_on_hand[start:].ravel(),
+            "available": world.closing_available[start:].ravel(),
+            "sales": world.sales[start:].ravel(),
+            "receipts": world.receipts[start:].ravel(),
+        },
+        index=idx,
+    ).reset_index()
     snap["date"] = days[snap["day"].to_numpy()].date
     snap["sku"] = env.products["sku"].to_numpy()[snap["sku_idx"].to_numpy()]
     snap["location"] = np.array(LOCATIONS)[snap["loc"].to_numpy()]
     fba_off = ~env.products["fba_enabled"].to_numpy()[snap["sku_idx"].to_numpy()] & (snap["loc"] == 2)
     snap[~fba_off][["date", "sku", "location", "on_hand", "available", "sales", "receipts"]].to_sql(
-        "inventory_snapshots", eng_db, if_exists="append", index=False, chunksize=50000)
+        "inventory_snapshots", eng_db, if_exists="append", index=False, chunksize=50000
+    )
 
     # evaluation layer (read by the comparison and benchmark pages only)
     for name in ("summary", "per_sku", "bootstrap", "calibration"):
@@ -94,8 +112,12 @@ def main() -> int:
         f = sim / "benchmark" / f"{name}.parquet"
         if f.exists():
             pd.read_parquet(f).to_sql(f"eval_benchmark_{name}", eng_db, if_exists="replace", index=False, chunksize=50000)
-    meta = {k: json.loads((sim / f).read_text()) for k, f in (("matched", "matched.json"), ("run", "run.json")) if (sim / f).exists()}
-    pd.DataFrame([{"key": k, "value": json.dumps(v)} for k, v in meta.items()]).to_sql("eval_meta", eng_db, if_exists="replace", index=False)
+    meta = {
+        k: json.loads((sim / f).read_text()) for k, f in (("matched", "matched.json"), ("run", "run.json")) if (sim / f).exists()
+    }
+    pd.DataFrame([{"key": k, "value": json.dumps(v)} for k, v in meta.items()]).to_sql(
+        "eval_meta", eng_db, if_exists="replace", index=False
+    )
 
     # both worlds, weekly network totals, for the comparison charts
     rows = []
@@ -103,13 +125,23 @@ def main() -> int:
         with open(sim / f"world_{name}_seed{cfg['random_seed']}.pkl", "rb") as fh:
             w = pickle.load(fh)["engine"]
         W = T // 7
-        r = lambda a: a[: W * 7].reshape(W, 7, *a.shape[1:]).sum(axis=1)  # noqa: E731
+
+        def r(a, W=W):
+            return a[: W * 7].reshape(W, 7, *a.shape[1:]).sum(axis=1)
+
         inv = np.nan_to_num(w.closing_on_hand[: W * 7]).sum(axis=2) * env.products["unit_cost"].to_numpy()
-        rows.append(pd.DataFrame({
-            "world": name, "week": days[: W * 7: 7], "demand": r(env.baseline).sum(axis=(1, 2)),
-            "sold": r(w.sales).sum(axis=(1, 2)), "lost": r(w.lost).sum(axis=(1, 2)),
-            "inventory_value": inv.reshape(W, 7, -1).sum(axis=2).mean(axis=1),
-        }))
+        rows.append(
+            pd.DataFrame(
+                {
+                    "world": name,
+                    "week": days[: W * 7 : 7],
+                    "demand": r(env.baseline).sum(axis=(1, 2)),
+                    "sold": r(w.sales).sum(axis=(1, 2)),
+                    "lost": r(w.lost).sum(axis=(1, 2)),
+                    "inventory_value": inv.reshape(W, 7, -1).sum(axis=2).mean(axis=1),
+                }
+            )
+        )
     pd.concat(rows).to_sql("eval_world_weekly", eng_db, if_exists="replace", index=False)
     print(f"database ready: {url}")
     return 0

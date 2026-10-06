@@ -140,7 +140,7 @@ saving at today's service level is weak, and the size of the high-service advant
 supply luck. Calibration on dev: P80 covered 77.5%, P90 86.1%, P95 90.0% (narrow, worse in the
 peak season and for new products). Null world (dev, seed 42): 9.4% saving, interval 1.8% to 14.2%.
 
-## Test results (demo SKUs, run once on 2026-10-06)
+## Test results (demo SKUs, run on 2026-10-06; numbers after the correction logged below)
 
 Headline subset: 168 demo SKUs without simulated events. Reference world (supply seed 42) unless
 stated.
@@ -149,11 +149,11 @@ stated.
 |---|---|---|
 | Fill rate | 82.0% | 88.7% |
 | In-stock rate | 88.0% | 91.3% |
-| Average inventory | $217.4k | $353.5k |
+| Average inventory | $217.4k | $353.9k |
 | Lost contribution | $132.2k | $78.2k |
 | Inventory turns | 3.09 | 2.06 |
 | Excess at the end | $44.2k | $102.2k |
-| Ending position (on hand + on order) | $346.3k | $462.1k |
+| Ending position (on hand + on order) | $346.3k | $458.4k |
 | One-week WAPE | 0.623 | 0.633 |
 | Forecast bias | −20.6% | −9.7% |
 
@@ -161,9 +161,9 @@ stated.
 *more* inventory (90% interval −14.3% to +6.5%). Replicate worlds: −1.0% (seed 7), +0.9%
 (seed 2026). At the service level the current process delivers, QStats does not save inventory.
 
-**Secondary.** To reach QStats's fill rate (88.7%) the Legacy rule needs 5.1% more inventory than
-QStats (interval −14.8% to +25.1%); 12.9% and 9.4% in the replicate worlds. QStats - Legacy-30:
-fill +4.8 to +9.1 points, inventory +$91k to +$195k, lost contribution −$34k to −$76k (90%
+**Secondary.** To reach QStats's fill rate (88.7%) the Legacy rule needs 5.0% more inventory than
+QStats (interval −14.9% to +25.1%); 13.5% and 9.7% in the replicate worlds. QStats − Legacy-30:
+fill +4.8 to +9.1 points, inventory +$91k to +$196k, lost contribution −$34k to −$76k (90%
 intervals).
 
 **Ablation (inventory the Legacy frontier needs at the arm's fill rate / arm's inventory − 1;
@@ -173,10 +173,10 @@ seeds 42 / 7 / 2026):**
 |---|---|
 | Legacy + seasonal prior | +12.2% / +5.6% / +14.4% |
 | Reconstruction + prior, Legacy safety stock | +4.4% / +10.7% / +8.2% |
-| Reconstruction + probabilistic safety stock, no prior | +13.6% / +8.4% / +3.1% |
-| Probabilistic safety stock without reconstruction | −5.4% to −30.6% |
-| QStats, product targets | +5.1% / +12.9% / +9.4% |
-| QStats, 95% for every SKU | +15.0% / +32.7% / +26.5% |
+| Reconstruction + probabilistic safety stock, no prior | +13.0% / +8.6% / +3.0% |
+| Probabilistic safety stock without reconstruction | −3.0% to −30.4% |
+| QStats, product targets | +5.0% / +13.5% / +9.7% |
+| QStats, 95% for every SKU | +14.9% / +32.4% / +29.6% |
 
 The largest single, consistent gain is the seasonal prior, which the Legacy process can adopt on
 its own. Probabilistic safety stock learned from censored sales is worse than the 30-day rule:
@@ -190,14 +190,23 @@ stockout correction has to come first.
 are too narrow, most in the peak season (P95 84.7%), for new products (77.5%) and for the 54
 seasonal SKU-weeks (77.8%). REGULAR SKUs are close to nominal (P90 90.1%, P95 96.1%).
 
-**Event SKUs (32, reported separately):** QStats 94.9% fill with $96.6k inventory; Legacy-30 90.2%
+**Event SKUs (32, reported separately):** QStats 94.9% fill with $96.7k inventory; Legacy-30 90.2%
 with $71.6k.
 
 **Sensitivity worlds:** with lead times always equal to the quote and no events, QStats saves 7.7%
 at Legacy-30's fill rate (interval 0.1% to 13.3%). With optimistic quotes (25th percentile) Legacy-
 30's fill drops to 80.0%, at the edge of the QStats frontier (primary metric out of range); the
-Legacy rule needs 12.6% more inventory than QStats to reach QStats's 89.2%.
+Legacy rule needs 12.8% more inventory than QStats to reach QStats's 89.2%.
 
 ## Change log
 
-- 2026-10-06: plan committed (`7a98f5e`); demo run once the same day; results above.
+- 2026-10-06: plan committed (`7a98f5e`); demo run once the same day.
+- 2026-10-06, correction: `weighted_quantiles` interpolated between support points, which
+  understates quantiles of a mixture with discrete atoms (a test with a two-point lead time gave
+  a P90 of 400 instead of 600). Replaced with the inverted-CDF quantile and the comparison rerun,
+  nothing else changed. Primary metric −2.61% → −2.62% (interval −14.3%/+6.5% → −14.4%/+6.5%;
+  seeds −1.03% → −1.03%, +0.89% → +0.88%). Secondary 5.1% → 5.0% (seeds 12.9% → 13.5%, 9.4% →
+  9.7%). QStats average inventory $353.5k → $353.9k, ending position $462.1k → $458.4k. Ablation
+  rows moved by at most 3.1 points (QStats 95%, seed 2026: 26.5% → 29.6%). The conclusions do not
+  change. A second fix (backtest padding when history is shorter than 24 weeks) cannot affect
+  these runs, which always have at least 52 weeks.

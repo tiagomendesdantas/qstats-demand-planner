@@ -33,7 +33,9 @@ def round_up_to_pack(raw: np.ndarray, case_pack: np.ndarray) -> np.ndarray:
     return np.where(raw > 0, np.ceil(raw / case_pack - 1e-9) * case_pack, 0).astype(int)
 
 
-def split_by_share(qty: np.ndarray, east_share: np.ndarray, case_pack: np.ndarray, preferred_east: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def split_by_share(
+    qty: np.ndarray, east_share: np.ndarray, case_pack: np.ndarray, preferred_east: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
     """Split an order between the two DCs in whole cases; the remainder goes to the preferred DC."""
     qty = np.asarray(qty, int)
     cases = qty // case_pack

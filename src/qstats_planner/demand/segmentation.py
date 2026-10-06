@@ -30,12 +30,17 @@ def segment_features(Y: np.ndarray, valid: np.ndarray, y_adj: np.ndarray, weeks_
         adi = len(x) / len(nz) if len(nz) else np.inf
         cv2 = float(np.var(nz) / np.mean(nz) ** 2) if len(nz) > 1 else 0.0
         r = y_adj[-26:, i][valid[-26:, i]]
-        rows.append({
-            "weeks_since_launch": int(weeks_since_launch[i]), "history_weeks": int(valid[:, i].sum()),
-            "adi": adi, "cv2": cv2, "zero_week_ratio": float((x == 0).mean()) if len(x) else 1.0,
-            "mean_weekly_units": float(x.mean()) if len(x) else 0.0,
-            "trend_26w": trend_strength(np.nan_to_num(r)) if len(r) >= 8 else 0.0,
-        })
+        rows.append(
+            {
+                "weeks_since_launch": int(weeks_since_launch[i]),
+                "history_weeks": int(valid[:, i].sum()),
+                "adi": adi,
+                "cv2": cv2,
+                "zero_week_ratio": float((x == 0).mean()) if len(x) else 1.0,
+                "mean_weekly_units": float(x.mean()) if len(x) else 0.0,
+                "trend_26w": trend_strength(np.nan_to_num(r)) if len(r) >= 8 else 0.0,
+            }
+        )
     return pd.DataFrame(rows)
 
 

@@ -30,7 +30,7 @@ GRID = (np.arange(200) + 0.5) / 200
 
 
 def bucket_of(h: float) -> int:
-    for k, (lo, hi) in enumerate(BUCKETS):
+    for k, (_lo, hi) in enumerate(BUCKETS):
         if h <= hi:
             return k
     return len(BUCKETS) - 1
@@ -38,7 +38,7 @@ def bucket_of(h: float) -> int:
 
 @dataclass
 class ErrorTable:
-    samples: dict[tuple[str, int], np.ndarray]   # (segment, bucket) -> scaled errors (quantile grid)
+    samples: dict[tuple[str, int], np.ndarray]  # (segment, bucket) -> scaled errors (quantile grid)
     counts: dict[tuple[str, int], int]
 
     def errors(self, segment: str, h_weeks: float) -> np.ndarray:
@@ -71,7 +71,7 @@ def build_error_table(bt, champion: np.ndarray, segments: np.ndarray, level: np.
         h = REPRESENTATIVE[lo]
         if h not in bt.forecast:
             continue
-        f = bt.forecast[h][champion, :, np.arange(n)].T          # (W, n) champion forecast
+        f = bt.forecast[h][champion, :, np.arange(n)].T  # (W, n) champion forecast
         scale = level * h
         ok = bt.scored[h] & np.isfinite(f) & (scale > 0)
         with np.errstate(invalid="ignore", divide="ignore"):
@@ -90,8 +90,11 @@ def build_error_table(bt, champion: np.ndarray, segments: np.ndarray, level: np.
 
 
 def weighted_quantiles(values: np.ndarray, weights: np.ndarray, qs: np.ndarray) -> np.ndarray:
-    o = np.argsort(values)
+    """Inverted-CDF quantiles of a weighted sample: the smallest value whose cumulative weight
+    reaches q. Exact for mixtures with discrete atoms (interpolating between atoms is not)."""
+    o = np.argsort(values, kind="stable")
     v, w = values[o], weights[o]
     c = np.cumsum(w)
     c = c / c[-1]
-    return np.interp(qs, c, v)
+    idx = np.searchsorted(c, np.asarray(qs) - 1e-12, side="left")
+    return v[np.clip(idx, 0, len(v) - 1)]

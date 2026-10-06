@@ -46,14 +46,15 @@ class QStatsPlanner:
         d.orders = [(int(i), int(st.east_qty[i]), int(st.west_qty[i])) for i in np.where(st.order_qty > 0)[0]]
         d.transfers = [(r["sku_idx"], r["qty"], r["source"]) for r in st.fba.attrs["transfers"]]
         # what the planner believed when it decided: used for calibration in the evaluation layer
-        self.history.append({
-            "t": view.t,
-            "ltd_mean": st.ltd.mean.copy(),
-            "ltd_q": {q: v.copy() for q, v in st.ltd.quantiles.items()},
-            "lt_p50": np.array([d_.quantile(0.5) for d_ in st.sku_lead_time]),
-            "segments": st.forecast_state.segments.copy(),
-            "champion": st.forecast_state.selection.champion.copy(),
-            "weekly_fc_1": st.weekly_fc[0].copy(),
-        })
+        self.history.append(
+            {
+                "t": view.t,
+                "ltd_mean": st.ltd.mean.copy(),
+                "ltd_q": {q: v.copy() for q, v in st.ltd.quantiles.items()},
+                "lt_p50": np.array([d_.quantile(0.5) for d_ in st.sku_lead_time]),
+                "segments": st.forecast_state.segments.copy(),
+                "champion": st.forecast_state.selection.champion.copy(),
+                "weekly_fc_1": st.weekly_fc[0].copy(),
+            }
+        )
         return d
-

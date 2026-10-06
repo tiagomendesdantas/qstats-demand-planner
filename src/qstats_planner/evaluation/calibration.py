@@ -29,8 +29,14 @@ def calibration_rows(env, history: list[dict], start: int, review_days: int) -> 
         realised = np.where(ok, cs[np.minimum(end, env.n_days), np.arange(n)] - cs[t + 1], np.nan)
         month = env.days[min(t + 1, env.n_days - 1)].month
         for i in np.where(ok & (env.launch_day <= t))[0]:
-            row = {"t": t, "sku_idx": i, "segment": h["segments"][i], "peak": month in (9, 10, 11, 12),
-                   "realised": realised[i], "mean": h["ltd_mean"][i]}
+            row = {
+                "t": t,
+                "sku_idx": i,
+                "segment": h["segments"][i],
+                "peak": month in (9, 10, 11, 12),
+                "realised": realised[i],
+                "mean": h["ltd_mean"][i],
+            }
             for q in QUANTILES:
                 row[f"q{int(q * 100)}"] = h["ltd_q"][q][i]
             rows.append(row)

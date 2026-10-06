@@ -38,5 +38,14 @@ testpaths = ["tests"]
 pythonpath = ["src", "."]
 
 [tool.ruff]
-line-length = 100
+line-length = 130
 target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E731"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*" = ["E402"]
+"dashboard/*" = ["E402"]
+"src/qstats_planner/api/main.py" = ["B008"]

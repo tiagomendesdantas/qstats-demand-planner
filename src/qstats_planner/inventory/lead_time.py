@@ -20,8 +20,8 @@ from scipy.stats import norm
 @dataclass
 class LeadTimeDistribution:
     supplier_id: str
-    days: np.ndarray       # support (integer days)
-    prob: np.ndarray       # probabilities, sum 1
+    days: np.ndarray  # support (integer days)
+    prob: np.ndarray  # probabilities, sum 1
     n_received: int
     n_open: int
     quoted: float
@@ -83,8 +83,7 @@ def estimate(obs, supplier_id: str, quoted: float, k: int, prior_log_sd: float =
 
 
 def estimate_all(obs, suppliers, k: int) -> dict[str, LeadTimeDistribution]:
-    return {r.supplier_id: estimate(obs, r.supplier_id, float(r.quoted_lead_time_days), k)
-            for r in suppliers.itertuples()}
+    return {r.supplier_id: estimate(obs, r.supplier_id, float(r.quoted_lead_time_days), k) for r in suppliers.itertuples()}
 
 
 def point(quoted: float) -> LeadTimeDistribution:

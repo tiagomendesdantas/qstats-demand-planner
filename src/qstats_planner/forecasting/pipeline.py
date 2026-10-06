@@ -25,12 +25,12 @@ SELECTION_HORIZONS = (6, 8, 11, 14)
 class History:
     """Weekly planner-side history (complete weeks up to the plan date)."""
 
-    Y: np.ndarray            # (W, n) reconstructed weekly units
-    imputed: np.ndarray      # (W, n) units of Y that were imputed
-    observed: np.ndarray     # (W, n) units actually sold
-    valid: np.ndarray        # (W, n) week may update a model
-    exposure: np.ndarray     # (W,) trading days
-    season: np.ndarray       # (W, n) seasonal prior factor (ones when the prior is off)
+    Y: np.ndarray  # (W, n) reconstructed weekly units
+    imputed: np.ndarray  # (W, n) units of Y that were imputed
+    observed: np.ndarray  # (W, n) units actually sold
+    valid: np.ndarray  # (W, n) week may update a model
+    exposure: np.ndarray  # (W,) trading days
+    season: np.ndarray  # (W, n) seasonal prior factor (ones when the prior is off)
     launch_week: np.ndarray  # (n,)
     seasonal_group: np.ndarray  # (n,)
 
@@ -59,8 +59,14 @@ def selection_horizon(protection_weeks: np.ndarray) -> np.ndarray:
     return hs[np.abs(hs[None, :] - np.asarray(protection_weeks)[:, None]).argmin(axis=1)]
 
 
-def fit(h: History, protection_weeks: np.ndarray, cfg: dict, use_prior: bool,
-        previous: ForecastState | None = None, keep_backtest: bool = False) -> ForecastState:
+def fit(
+    h: History,
+    protection_weeks: np.ndarray,
+    cfg: dict,
+    use_prior: bool,
+    previous: ForecastState | None = None,
+    keep_backtest: bool = False,
+) -> ForecastState:
     f = cfg["forecasting"]
     W, n = h.Y.shape
     models = candidate_models(cfg, with_prior=use_prior)
@@ -72,8 +78,18 @@ def fit(h: History, protection_weeks: np.ndarray, cfg: dict, use_prior: bool,
         es_seas = es_plain * h.season
         horizons = tuple(sorted(set(SELECTION_HORIZONS) | set(REPRESENTATIVE.values())))
         first_origin = h.launch_week + 8
-        bt = run_backtest(models, states, h.Y, h.imputed, es_plain, es_seas, h.exposure, first_origin,
-                          horizons, f["max_imputed_share_in_scoring_window"])
+        bt = run_backtest(
+            models,
+            states,
+            h.Y,
+            h.imputed,
+            es_plain,
+            es_seas,
+            h.exposure,
+            first_origin,
+            horizons,
+            f["max_imputed_share_in_scoring_window"],
+        )
         weeks_since = W - h.launch_week
         feat = segment_features(h.Y, h.valid, y_seas, weeks_since)
         segments = assign_segments(feat, h.seasonal_group, cfg)
@@ -82,7 +98,7 @@ def fit(h: History, protection_weeks: np.ndarray, cfg: dict, use_prior: bool,
         recent = np.arange(W) >= W - 52
         cs = np.cumsum(np.where(h.valid, h.Y, 0.0), axis=0)
         cn = np.cumsum(h.valid, axis=0)
-        mean_level = np.where(cn > 0, cs / np.maximum(cn, 1), np.nan)   # as of each origin
+        mean_level = np.where(cn > 0, cs / np.maximum(cn, 1), np.nan)  # as of each origin
         for hh in SELECTION_HORIZONS:
             cols = hsel == hh
             if not cols.any():
@@ -95,12 +111,27 @@ def fit(h: History, protection_weeks: np.ndarray, cfg: dict, use_prior: bool,
             prev = None
         sel = select(models, err, segments, hsel, prev, cfg, f["min_origins_for_selection"])
         errors = build_error_table(bt, sel.champion, segments, recent_level(h.Y, h.valid), f["min_errors_for_sku_quantiles"])
-    return ForecastState(models, sel, errors, segments, feat, W - 1, bt if keep_backtest else None,
-                         {"selection_error": err if keep_backtest else None, "selection_horizon": hsel})
+    return ForecastState(
+        models,
+        sel,
+        errors,
+        segments,
+        feat,
+        W - 1,
+        bt if keep_backtest else None,
+        {"selection_error": err if keep_backtest else None, "selection_horizon": hsel},
+    )
 
 
-def forecast(h: History, fs: ForecastState, cfg: dict, use_prior: bool, future_exposure: np.ndarray,
-             future_season: np.ndarray, horizon_weeks: int) -> np.ndarray:
+def forecast(
+    h: History,
+    fs: ForecastState,
+    cfg: dict,
+    use_prior: bool,
+    future_exposure: np.ndarray,
+    future_season: np.ndarray,
+    horizon_weeks: int,
+) -> np.ndarray:
     """(H, n) champion unit forecasts for the next `horizon_weeks` weeks, from the latest week."""
     W, n = h.Y.shape
     with warnings.catch_warnings():
@@ -150,7 +181,13 @@ def diagnostics(h: History, fs: ForecastState, product_idx: np.ndarray | None = 
     for m, spec in enumerate(fs.models):
         for i in range(n):
             met = weekly_metrics(bt.week1_forecast[m][:, i], bt.week1_actual[:, i], ok[:, i])
-            rows.append({"sku_idx": i, "model": spec.name, "champion": fs.selection.champion[i] == m,
-                         "cum_scaled_error": float(np.nanmean(err[m, :, i])) if np.isfinite(err[m, :, i]).any() else np.nan,
-                         **met})
+            rows.append(
+                {
+                    "sku_idx": i,
+                    "model": spec.name,
+                    "champion": fs.selection.champion[i] == m,
+                    "cum_scaled_error": float(np.nanmean(err[m, :, i])) if np.isfinite(err[m, :, i]).any() else np.nan,
+                    **met,
+                }
+            )
     return pd.DataFrame(rows)

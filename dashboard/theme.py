@@ -22,19 +22,40 @@ import plotly.graph_objects as go
 import streamlit as st
 
 LIGHT = {
-    "surface": "#ffffff", "panel": "#f4f5f2", "ink": "#1b1d1a", "ink2": "#4d514a", "muted": "#7a7f76",
-    "rule": "#dcdfd8", "grid": "#eceee9", "accent": "#1d6b4a",
-    "s1": "#1d7a55", "s2": "#2a78d6", "s3": "#c98500", "band": "rgba(29,122,85,0.13)", "band2": "rgba(29,122,85,0.07)",
-    "shade": "rgba(27,29,26,0.06)", "event": "rgba(201,133,0,0.12)",
+    "surface": "#ffffff",
+    "panel": "#f4f5f2",
+    "ink": "#1b1d1a",
+    "ink2": "#4d514a",
+    "muted": "#7a7f76",
+    "rule": "#dcdfd8",
+    "grid": "#eceee9",
+    "accent": "#1d6b4a",
+    "s1": "#1d7a55",
+    "s2": "#2a78d6",
+    "s3": "#c98500",
+    "band": "rgba(29,122,85,0.13)",
+    "band2": "rgba(29,122,85,0.07)",
+    "shade": "rgba(27,29,26,0.06)",
+    "event": "rgba(201,133,0,0.12)",
 }
 DARK = {
-    "surface": "#151614", "panel": "#1e201d", "ink": "#e8eae5", "ink2": "#b9bdb4", "muted": "#8b9086",
-    "rule": "#30332e", "grid": "#262925", "accent": "#4fb487",
-    "s1": "#2f9c70", "s2": "#4a8fe0", "s3": "#c98500", "band": "rgba(47,156,112,0.22)", "band2": "rgba(47,156,112,0.11)",
-    "shade": "rgba(232,234,229,0.07)", "event": "rgba(201,133,0,0.18)",
+    "surface": "#151614",
+    "panel": "#1e201d",
+    "ink": "#e8eae5",
+    "ink2": "#b9bdb4",
+    "muted": "#8b9086",
+    "rule": "#30332e",
+    "grid": "#262925",
+    "accent": "#4fb487",
+    "s1": "#2f9c70",
+    "s2": "#4a8fe0",
+    "s3": "#c98500",
+    "band": "rgba(47,156,112,0.22)",
+    "band2": "rgba(47,156,112,0.11)",
+    "shade": "rgba(232,234,229,0.07)",
+    "event": "rgba(201,133,0,0.18)",
 }
-STATUS = {"CRITICAL": "#d03b3b", "HIGH": "#ec835a", "MEDIUM": "#c98500", "LOW": "#7a7f76", "INFO": "#7a7f76",
-          "good": "#0ca30c"}
+STATUS = {"CRITICAL": "#d03b3b", "HIGH": "#ec835a", "MEDIUM": "#c98500", "LOW": "#7a7f76", "INFO": "#7a7f76", "good": "#0ca30c"}
 GLYPH = {"CRITICAL": "●", "HIGH": "▲", "MEDIUM": "■", "LOW": "○", "INFO": "·"}
 
 
@@ -46,6 +67,7 @@ def palette() -> dict:
 
 
 # ------------------------------------------------------------------ formatting
+
 
 def money(v: float, digits: int = 0) -> str:
     if v is None or (isinstance(v, float) and math.isnan(v)):
@@ -145,8 +167,10 @@ def callout(text: str) -> None:
 
 def strip(cells: list[tuple[str, str, str]]) -> None:
     """A row of key numbers separated by hairlines: (label, value, sub-line)."""
-    html = "".join(f"<div class='qs-cell'><div class='qs-lab'>{a}</div><div class='qs-val'>{b}</div>"
-                   f"<div class='qs-sub'>{c}</div></div>" for a, b, c in cells)
+    html = "".join(
+        f"<div class='qs-cell'><div class='qs-lab'>{a}</div><div class='qs-val'>{b}</div><div class='qs-sub'>{c}</div></div>"
+        for a, b, c in cells
+    )
     st.html(f"<div class='qs-strip'>{html}</div>")
 
 
@@ -160,21 +184,47 @@ def chip(severity: str) -> str:
 
 # ------------------------------------------------------------------ charts
 
+
 def figure(height: int = 320, y_title: str | None = None, x_title: str | None = None) -> go.Figure:
     pal = palette()
     fig = go.Figure()
     fig.update_layout(
-        height=height, margin=dict(l=8, r=8, t=28, b=8), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        height=height,
+        margin=dict(l=8, r=8, t=28, b=8),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="IBM Plex Sans, system-ui, sans-serif", size=12, color=pal["ink2"]),
-        legend=dict(orientation="h", x=0, y=1.08, xanchor="left", yanchor="bottom", bgcolor="rgba(0,0,0,0)",
-                    font=dict(size=12, color=pal["ink2"])),
+        legend=dict(
+            orientation="h",
+            x=0,
+            y=1.08,
+            xanchor="left",
+            yanchor="bottom",
+            bgcolor="rgba(0,0,0,0)",
+            font=dict(size=12, color=pal["ink2"]),
+        ),
         hoverlabel=dict(font=dict(family="IBM Plex Mono, monospace", size=12), bgcolor=pal["surface"], bordercolor=pal["rule"]),
         hovermode="x unified",
     )
-    fig.update_xaxes(showgrid=False, linecolor=pal["rule"], tickcolor=pal["rule"], ticks="outside", ticklen=3, automargin=True,
-                     title=dict(text=x_title, font=dict(size=12)) if x_title else None, zeroline=False)
-    fig.update_yaxes(gridcolor=pal["grid"], gridwidth=1, zeroline=False, linecolor="rgba(0,0,0,0)", automargin=True,
-                     title=dict(text=y_title, font=dict(size=12)) if y_title else None, tickformat=",~s")
+    fig.update_xaxes(
+        showgrid=False,
+        linecolor=pal["rule"],
+        tickcolor=pal["rule"],
+        ticks="outside",
+        ticklen=3,
+        automargin=True,
+        title=dict(text=x_title, font=dict(size=12)) if x_title else None,
+        zeroline=False,
+    )
+    fig.update_yaxes(
+        gridcolor=pal["grid"],
+        gridwidth=1,
+        zeroline=False,
+        linecolor="rgba(0,0,0,0)",
+        automargin=True,
+        title=dict(text=y_title, font=dict(size=12)) if y_title else None,
+        tickformat=",~s",
+    )
     return fig
 
 
@@ -195,9 +245,16 @@ def shade_runs(fig: go.Figure, x: np.ndarray, flags: np.ndarray, color: str, lab
             j = i
             while j + 1 < len(flags) and flags[j + 1]:
                 j += 1
-            fig.add_vrect(x0=x[i], x1=x[j] + np.timedelta64(width_days, "D"), fillcolor=color, line_width=0, layer="below",
-                          annotation_text=label if not shown else None, annotation_position="top left",
-                          annotation_font=dict(size=11, color=palette()["muted"]))
+            fig.add_vrect(
+                x0=x[i],
+                x1=x[j] + np.timedelta64(width_days, "D"),
+                fillcolor=color,
+                line_width=0,
+                layer="below",
+                annotation_text=label if not shown else None,
+                annotation_position="top left",
+                annotation_font=dict(size=11, color=palette()["muted"]),
+            )
             shown = True
             i = j + 1
         else:

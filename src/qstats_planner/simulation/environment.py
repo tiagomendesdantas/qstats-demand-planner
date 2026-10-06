@@ -27,21 +27,21 @@ DCS = (EAST, WEST)
 @dataclass
 class Environment:
     seed: int
-    days: pd.DatetimeIndex                 # every calendar day of the simulation
-    trading: np.ndarray                    # (n_days,) bool
+    days: pd.DatetimeIndex  # every calendar day of the simulation
+    trading: np.ndarray  # (n_days,) bool
     calendar: TradingCalendar
-    products: pd.DataFrame                 # index = position in the arrays
+    products: pd.DataFrame  # index = position in the arrays
     suppliers: pd.DataFrame
-    baseline: np.ndarray                   # (n_days, n_sku, n_loc) HIDDEN reference demand
-    pre_uplift: np.ndarray                 # baseline before simulated event uplift (HIDDEN)
-    launch_day: np.ndarray                 # first day the SKU can sell (index into days)
-    end_day: np.ndarray                    # last day of its life (index), inclusive
-    launch_stock: np.ndarray               # (n_sku,) units delivered at launch for post-warm-up launches
-    events: pd.DataFrame                   # PROMOTION / LIQUIDATION calendar (simulated)
-    lead_time_history: pd.DataFrame        # receipts before the simulation starts
-    unknown_mask: np.ndarray               # (n_days, n_sku, n_loc) inventory feed missing
-    fba_unavailable_share: np.ndarray      # (n_days, n_sku) share of FBA stock not sellable
-    fba_transit: np.ndarray                # (n_weeks, n_sku) transit days for a transfer shipped that week
+    baseline: np.ndarray  # (n_days, n_sku, n_loc) HIDDEN reference demand
+    pre_uplift: np.ndarray  # baseline before simulated event uplift (HIDDEN)
+    launch_day: np.ndarray  # first day the SKU can sell (index into days)
+    end_day: np.ndarray  # last day of its life (index), inclusive
+    launch_stock: np.ndarray  # (n_sku,) units delivered at launch for post-warm-up launches
+    events: pd.DataFrame  # PROMOTION / LIQUIDATION calendar (simulated)
+    lead_time_history: pd.DataFrame  # receipts before the simulation starts
+    unknown_mask: np.ndarray  # (n_days, n_sku, n_loc) inventory feed missing
+    fba_unavailable_share: np.ndarray  # (n_days, n_sku) share of FBA stock not sellable
+    fba_transit: np.ndarray  # (n_weeks, n_sku) transit days for a transfer shipped that week
     _lt: dict = field(default_factory=dict)
     scenario: str = "base"
 
@@ -88,7 +88,9 @@ def _case_pack(quantities: pd.Series, candidates: list[int]) -> int:
     return int(q.mode().iloc[0]) if len(q) else 12
 
 
-def build_products(pop: pd.DataFrame, lines: pd.DataFrame, sel_end: pd.Timestamp, n_suppliers: int, cfg: dict, seed: int) -> pd.DataFrame:
+def build_products(
+    pop: pd.DataFrame, lines: pd.DataFrame, sel_end: pd.Timestamp, n_suppliers: int, cfg: dict, seed: int
+) -> pd.DataFrame:
     biz, prod = cfg["business"], cfg["products"]
     rng = stream(seed, "products")
     hist = lines[lines["date"] <= sel_end]
@@ -109,13 +111,21 @@ def build_products(pop: pd.DataFrame, lines: pd.DataFrame, sel_end: pd.Timestamp
         weeks_alive = max(1.0, (sel_end - h["date"].min()).days / 7) if len(h) else 1.0
         weekly = h["units"].sum() / weeks_alive if len(h) else 0.0
         moq_cases = max(2, int(np.ceil(rng.uniform(*prod["moq_weeks_of_demand"]) * weekly / pack))) if weekly else 4
-        rows.append({
-            "sku": sku, "description": desc, "category": cat, "supplier_idx": supplier_idx,
-            "selling_price": price, "unit_cost": cost, "case_pack": pack, "moq": moq_cases * pack,
-            "cube_per_case": round(rng.uniform(*prod["cube_per_case_m3"]), 4),
-            "advertising_pct": round(rng.uniform(*biz["advertising_cost_pct"]), 3),
-            "_revenue": float((h["units"] * h["unit_price"]).sum()),
-        })
+        rows.append(
+            {
+                "sku": sku,
+                "description": desc,
+                "category": cat,
+                "supplier_idx": supplier_idx,
+                "selling_price": price,
+                "unit_cost": cost,
+                "case_pack": pack,
+                "moq": moq_cases * pack,
+                "cube_per_case": round(rng.uniform(*prod["cube_per_case_m3"]), 4),
+                "advertising_pct": round(rng.uniform(*biz["advertising_cost_pct"]), 3),
+                "_revenue": float((h["units"] * h["unit_price"]).sum()),
+            }
+        )
     p = pd.DataFrame(rows)
     rank = p["_revenue"].rank(ascending=False, pct=True)
     p["abc_class"] = np.where(rank <= 0.2, "A", np.where(rank <= 0.5, "B", "C"))
@@ -141,19 +151,21 @@ def build_suppliers(cfg: dict, seed: int, quote_quantile: float = 0.5) -> pd.Dat
     rng = stream(seed, "suppliers")
     rows = []
     for i in range(s["count"]):
-        rows.append({
-            "supplier_id": f"SUP-{i + 1:02d}",
-            "supplier_name": f"Supplier {i + 1:02d}",
-            "country": s["countries"][i % len(s["countries"])],
-            "base_median_days": float(rng.uniform(*s["lead_time_median_days"])),
-            "idio_sd": float(rng.uniform(*s["lead_time_log_sd"])),
-            "shock_sd": float(rng.uniform(*s["supplier_week_shock_log_sd"])),
-            "delay_p": float(rng.uniform(*s["delay_probability"])),
-            "delay_mean_days": float(rng.uniform(*s["delay_mean_days"])),
-            "minimum_order_value": float(round(rng.uniform(*s["minimum_order_value_usd"]), -2)),
-            "minimum_container_fill": s["minimum_container_fill"],
-            "container_capacity_m3": s["container"]["capacity_m3"],
-        })
+        rows.append(
+            {
+                "supplier_id": f"SUP-{i + 1:02d}",
+                "supplier_name": f"Supplier {i + 1:02d}",
+                "country": s["countries"][i % len(s["countries"])],
+                "base_median_days": float(rng.uniform(*s["lead_time_median_days"])),
+                "idio_sd": float(rng.uniform(*s["lead_time_log_sd"])),
+                "shock_sd": float(rng.uniform(*s["supplier_week_shock_log_sd"])),
+                "delay_p": float(rng.uniform(*s["delay_probability"])),
+                "delay_mean_days": float(rng.uniform(*s["delay_mean_days"])),
+                "minimum_order_value": float(round(rng.uniform(*s["minimum_order_value_usd"]), -2)),
+                "minimum_container_fill": s["minimum_container_fill"],
+                "container_capacity_m3": s["container"]["capacity_m3"],
+            }
+        )
     sup = pd.DataFrame(rows)
     # Quoted lead time = median of the supplier's true distribution (disruptions excluded):
     # the quote is honest on average, and the tail is what a planner has to learn. The
@@ -188,8 +200,7 @@ def assign_locations(lines: pd.DataFrame, fba_enabled: pd.Series, cfg: dict) -> 
     loc = np.where(u_region < east_share, EAST, WEST)
     basket = key.map(lines.groupby("customer_key")["units"].median()).to_numpy()
     small = basket <= biz["fba_max_median_line"]
-    fba = (lines["sku"].map(fba_enabled).fillna(False).to_numpy(bool) & small
-           & (u_channel < biz["fba_channel_share"]))
+    fba = lines["sku"].map(fba_enabled).fillna(False).to_numpy(bool) & small & (u_channel < biz["fba_channel_share"])
     return np.where(fba, FBA, loc)
 
 
@@ -205,8 +216,15 @@ def baseline_array(lines: pd.DataFrame, loc: np.ndarray, days: pd.DatetimeIndex,
 # --------------------------------------------------------------------------- events
 
 
-def build_events(products: pd.DataFrame, launch_day: np.ndarray, end_day: np.ndarray, disappeared: np.ndarray,
-                 days: pd.DatetimeIndex, cfg: dict, seed: int) -> pd.DataFrame:
+def build_events(
+    products: pd.DataFrame,
+    launch_day: np.ndarray,
+    end_day: np.ndarray,
+    disappeared: np.ndarray,
+    days: pd.DatetimeIndex,
+    cfg: dict,
+    seed: int,
+) -> pd.DataFrame:
     """Simulated promotions and liquidations. Real data does not say which spikes were promotions,
     so none of these labels claims to describe the source retailer."""
     ev, sim = cfg["events"], cfg["simulation"]
@@ -225,9 +243,17 @@ def build_events(products: pd.DataFrame, launch_day: np.ndarray, end_day: np.nda
                 continue
             length = 7 * int(rng.integers(ev["promotion_weeks"][0], ev["promotion_weeks"][1] + 1))
             uplift = float(np.exp(rng.normal(ev["promotion_uplift_log_mean"], ev["promotion_uplift_log_sd"])))
-            rows.append({"sku_idx": int(i), "kind": "PROMOTION", "start_day": int(s), "end_day": int(s + length - 1),
-                         "announce_day": int(s - 7 * ev["promotion_notice_weeks"]), "uplift": uplift,
-                         "price_change_pct": -0.15})
+            rows.append(
+                {
+                    "sku_idx": int(i),
+                    "kind": "PROMOTION",
+                    "start_day": int(s),
+                    "end_day": int(s + length - 1),
+                    "announce_day": int(s - 7 * ev["promotion_notice_weeks"]),
+                    "uplift": uplift,
+                    "price_change_pct": -0.15,
+                }
+            )
             last_end = s + length - 1
     dying = np.where(disappeared & (end_day > start_day + 8 * 7))[0]
     dying = np.setdiff1d(dying, promo_skus)
@@ -235,8 +261,17 @@ def build_events(products: pd.DataFrame, launch_day: np.ndarray, end_day: np.nda
     for i in liq:
         e = int(end_day[i])
         s = e - 7 * ev["liquidation_weeks"] + 1
-        rows.append({"sku_idx": int(i), "kind": "LIQUIDATION", "start_day": s, "end_day": e,
-                     "announce_day": s, "uplift": float(ev["liquidation_uplift"]), "price_change_pct": -0.30})
+        rows.append(
+            {
+                "sku_idx": int(i),
+                "kind": "LIQUIDATION",
+                "start_day": s,
+                "end_day": e,
+                "announce_day": s,
+                "uplift": float(ev["liquidation_uplift"]),
+                "price_change_pct": -0.30,
+            }
+        )
     out = pd.DataFrame(rows, columns=["sku_idx", "kind", "start_day", "end_day", "announce_day", "uplift", "price_change_pct"])
     if not out.empty:
         out["sku"] = products.loc[out["sku_idx"], "sku"].to_numpy()
@@ -248,17 +283,24 @@ def build_events(products: pd.DataFrame, launch_day: np.ndarray, end_day: np.nda
 def apply_uplift(baseline: np.ndarray, events: pd.DataFrame) -> np.ndarray:
     out = baseline.copy()
     for e in events.itertuples():
-        out[e.start_day: e.end_day + 1, e.sku_idx, :] *= e.uplift
+        out[e.start_day : e.end_day + 1, e.sku_idx, :] *= e.uplift
     return np.round(out)
 
 
 # --------------------------------------------------------------------------- build
 
 
-def build_environment(pop: pd.DataFrame, lines: pd.DataFrame, descriptions: pd.Series,
-                      trading_days: pd.DatetimeIndex, cfg: dict, seed: int,
-                      population: str = "demo", supply_seed: int | None = None,
-                      scenario: str = "base") -> Environment:
+def build_environment(
+    pop: pd.DataFrame,
+    lines: pd.DataFrame,
+    descriptions: pd.Series,
+    trading_days: pd.DatetimeIndex,
+    cfg: dict,
+    seed: int,
+    population: str = "demo",
+    supply_seed: int | None = None,
+    scenario: str = "base",
+) -> Environment:
     """`seed` fixes the business (products, economics, suppliers, events). `supply_seed` (default:
     the same) drives supplier luck, FBA behaviour and feed gaps; varying it alone gives replicate
     worlds with identical products and identical demand."""
@@ -300,8 +342,9 @@ def build_environment(pop: pd.DataFrame, lines: pd.DataFrame, descriptions: pd.S
     # comparable launches in the full catalogue before the fork (identical in every world).
     warm_end = sim["warmup_weeks"] * 7
     first8 = lines.merge(lines.groupby("sku")["date"].min().rename("first").reset_index(), on="sku")
-    first8 = first8[(first8["date"] < first8["first"] + pd.Timedelta(weeks=8)) & (first8["first"] < sel_end)
-                    & ~first8["sku"].isin(sku_pos)]
+    first8 = first8[
+        (first8["date"] < first8["first"] + pd.Timedelta(weeks=8)) & (first8["first"] < sel_end) & ~first8["sku"].isin(sku_pos)
+    ]
     launch_units = first8.groupby("sku")["units"].sum()
     # twelve weeks of a typical launch's first-eight-week rate
     typical = 1.5 * float(launch_units.median()) if len(launch_units) else 150.0
@@ -316,7 +359,7 @@ def build_environment(pop: pd.DataFrame, lines: pd.DataFrame, descriptions: pd.S
         k = rng.poisson(sup_cfg["disruptions_per_supplier"])
         for _ in range(k):
             w0 = int(rng.integers(sim["warmup_weeks"], len(days) // 7))
-            disruption[w0: w0 + 3, s] = rng.uniform(*sup_cfg["disruption_extra_days"])
+            disruption[w0 : w0 + 3, s] = rng.uniform(*sup_cfg["disruption_extra_days"])
     lt = {
         "shock": shock,
         "z_idio": stream(ss, "lead_times", "idio").normal(size=(n_weeks, len(products))),
@@ -337,9 +380,15 @@ def build_environment(pop: pd.DataFrame, lines: pd.DataFrame, descriptions: pd.S
                 base += hrng.exponential() * r.delay_mean_days
             ltd = int(max(7, round(base))) if scenario != "null" else int(r.quoted_lead_time_days)
             order = origin - pd.Timedelta(days=int(ltd + hrng.integers(0, 300)))
-            hist_rows.append({"po_id": f"HIST-{r.supplier_id}-{k:02d}", "supplier_id": r.supplier_id,
-                              "order_date": order, "receipt_date": order + pd.Timedelta(days=ltd),
-                              "lead_time_days": float(ltd)})
+            hist_rows.append(
+                {
+                    "po_id": f"HIST-{r.supplier_id}-{k:02d}",
+                    "supplier_id": r.supplier_id,
+                    "order_date": order,
+                    "receipt_date": order + pd.Timedelta(days=ltd),
+                    "lead_time_days": float(ltd),
+                }
+            )
     lead_hist = pd.DataFrame(hist_rows)
 
     urng = stream(ss, "unknown_availability")
@@ -348,7 +397,7 @@ def build_environment(pop: pd.DataFrame, lines: pd.DataFrame, descriptions: pd.S
         for l_ in range(len(LOCATIONS)):
             for _ in range(urng.poisson(sim["unknown_availability_blocks_per_sku"] / len(LOCATIONS))):
                 s0 = int(urng.integers(warm_end, len(days) - 20))
-                unknown[s0: s0 + int(urng.integers(*sim["unknown_availability_block_days"])), i, l_] = True
+                unknown[s0 : s0 + int(urng.integers(*sim["unknown_availability_block_days"])), i, l_] = True
 
     frng = stream(ss, "fba")
     lo, hi = sim["fba_unavailable_share"]
@@ -357,10 +406,23 @@ def build_environment(pop: pd.DataFrame, lines: pd.DataFrame, descriptions: pd.S
     fba_transit = frng.integers(sim["fba_transit_days"][0], sim["fba_transit_days"][1] + 1, size=(n_weeks, len(products)))
 
     env = Environment(
-        seed=ss, days=days, trading=trading, calendar=calendar, products=products,
-        suppliers=suppliers, baseline=baseline, pre_uplift=raw, launch_day=launch_day,
-        end_day=end_day, launch_stock=launch_stock, events=events, lead_time_history=lead_hist,
-        unknown_mask=unknown, fba_unavailable_share=fba_share, fba_transit=fba_transit, _lt=lt,
+        seed=ss,
+        days=days,
+        trading=trading,
+        calendar=calendar,
+        products=products,
+        suppliers=suppliers,
+        baseline=baseline,
+        pre_uplift=raw,
+        launch_day=launch_day,
+        end_day=end_day,
+        launch_stock=launch_stock,
+        events=events,
+        lead_time_history=lead_hist,
+        unknown_mask=unknown,
+        fba_unavailable_share=fba_share,
+        fba_transit=fba_transit,
+        _lt=lt,
         scenario=scenario,
     )
     return env

@@ -47,11 +47,23 @@ def benchmark(cfg: dict) -> None:
         warnings.simplefilter("ignore")
         for two in (False, True):
             for m in R.METHODS:
-                rec = R.reconstruct(cd, m, env.days.dayofweek.to_numpy(), two_sided=two, window=rc["window_trading_days"],
-                                    min_clean=rc["min_clean_days"], unknown_zero_run_p=rc["unknown_zero_run_probability"],
-                                    gamma_min_shape=rc["gamma_min_shape"])
-                rows.append({"method": m, "mode": "retrospective" if two else "real_time",
-                             **score(cd.sales, rec.adjusted, truth, cen, cd.active)})
+                rec = R.reconstruct(
+                    cd,
+                    m,
+                    env.days.dayofweek.to_numpy(),
+                    two_sided=two,
+                    window=rc["window_trading_days"],
+                    min_clean=rc["min_clean_days"],
+                    unknown_zero_run_p=rc["unknown_zero_run_probability"],
+                    gamma_min_shape=rc["gamma_min_shape"],
+                )
+                rows.append(
+                    {
+                        "method": m,
+                        "mode": "retrospective" if two else "real_time",
+                        **score(cd.sales, rec.adjusted, truth, cen, cd.active),
+                    }
+                )
                 if two:
                     recs[m] = rec.adjusted
     bdir = out / "benchmark"
@@ -68,15 +80,24 @@ def benchmark(cfg: dict) -> None:
     wk = lambda a: a[: W * 7].reshape(W, 7, *a.shape[1:]).sum(axis=1)  # noqa: E731
     frames = []
     for c, name in ((0, "DIRECT"), (1, "AMAZON")):
-        base = {"baseline": wk(truth[:, :, c]), "observed": wk(cd.sales[:, :, c]),
-                "censored_days": wk(cen[:, :, c].astype(float))}
+        base = {
+            "baseline": wk(truth[:, :, c]),
+            "observed": wk(cd.sales[:, :, c]),
+            "censored_days": wk(cen[:, :, c].astype(float)),
+        }
         base.update({m: wk(recs[m][:, :, c]) for m in recs if m != "no_adjustment"})
-        idx = pd.MultiIndex.from_product([env.days[: W * 7: 7], env.products["sku"]], names=["week", "sku"])
+        idx = pd.MultiIndex.from_product([env.days[: W * 7 : 7], env.products["sku"]], names=["week", "sku"])
         df = pd.DataFrame({k: v.ravel() for k, v in base.items()}, index=idx).reset_index()
         df["channel"] = name
         frames.append(df[(df["baseline"] > 0) | (df["observed"] > 0)])
     pd.concat(frames, ignore_index=True).to_parquet(bdir / "weekly.parquet", index=False)
-    print("benchmark:", pd.DataFrame(rows).query("mode == 'retrospective'")[["method", "episode_mae", "episode_bias", "recovery_pct"]].round(3).to_string(index=False))
+    print(
+        "benchmark:",
+        pd.DataFrame(rows)
+        .query("mode == 'retrospective'")[["method", "episode_mae", "episode_bias", "recovery_pct"]]
+        .round(3)
+        .to_string(index=False),
+    )
 
 
 def main() -> int:

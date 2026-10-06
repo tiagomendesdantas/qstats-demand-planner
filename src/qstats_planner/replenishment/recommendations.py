@@ -33,8 +33,9 @@ SEVERITY_RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1, "INFO": 0}
 DC_NAMES = {EAST: "EAST_DC", WEST: "WEST_DC"}
 
 
-def confidence_score(history_weeks: np.ndarray, segments: np.ndarray, imputed_share: np.ndarray,
-                     selection_error: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def confidence_score(
+    history_weeks: np.ndarray, segments: np.ndarray, imputed_share: np.ndarray, selection_error: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
     """0-1 score and HIGH / MEDIUM / LOW label. Documented in docs/forecasting_methodology.md."""
     s = np.ones(len(segments))
     s -= np.where(history_weeks < 26, 0.35, np.where(history_weeks < 52, 0.15, 0.0))
@@ -53,7 +54,7 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
     prod = view.products
     n = view.n_sku
     t = view.t
-    plan_date = view.date + pd.Timedelta(days=1)       # the plan applies from Monday
+    plan_date = view.date + pd.Timedelta(days=1)  # the plan applies from Monday
     horizon = cfg["forecasting"]["planning_horizon_days"]
     p = view.position
     fs = st.forecast_state
@@ -82,17 +83,23 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
     h = st.history
     imputed_share = h.imputed[-8:].sum(axis=0) / np.maximum(h.Y[-8:].sum(axis=0), 1e-9)
     hist_weeks = h.valid.sum(axis=0)
-    sel_err = np.nanmean(fs.extra["selection_error"][fs.selection.champion, :, np.arange(n)], axis=1) \
-        if fs.extra.get("selection_error") is not None else np.full(n, np.nan)
+    sel_err = (
+        np.nanmean(fs.extra["selection_error"][fs.selection.champion, :, np.arange(n)], axis=1)
+        if fs.extra.get("selection_error") is not None
+        else np.full(n, np.nan)
+    )
     conf_score, conf = confidence_score(hist_weeks, fs.segments, imputed_share, sel_err)
     cm = prod["contribution_margin"].to_numpy(float)
     cm_pct = prod["contribution_margin_pct"].to_numpy(float)
     cost = prod["unit_cost"].to_numpy(float)
     low_margin = cm_pct < biz["minimum_margin_pct"]
     discontinued = view.discontinued()
-    sup = view.suppliers.set_index("supplier_id")
-    next_po = open_po.assign(eday=np.where(open_po["status"] == "DELAYED", t + 7, open_po["expected_day"])) \
-        .sort_values("eday").groupby("sku_idx").first()
+    next_po = (
+        open_po.assign(eday=np.where(open_po["status"] == "DELAYED", t + 7, open_po["expected_day"]))
+        .sort_values("eday")
+        .groupby("sku_idx")
+        .first()
+    )
 
     svc_before = np.array([service_level(st.ltd.samples[i], st.position[i]) for i in range(n)])
     svc_after = np.array([service_level(st.ltd.samples[i], st.position[i] + st.order_qty[i]) for i in range(n)])
@@ -104,30 +111,53 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
     rows = []
 
     def add(i, action, severity, qty, location, why, evidence, effect, impact, stockout=None):
-        rows.append({
-            "sku_idx": int(i), "sku": prod.at[i, "sku"], "description": prod.at[i, "description"],
-            "category": prod.at[i, "category"], "supplier_id": prod.at[i, "supplier_id"],
-            "segment": fs.segments[i], "location": location, "action": action, "severity": severity,
-            "recommended_quantity": int(qty), "stockout_date": stockout if stockout is not None else day(so[i]),
-            "inventory_position": float(st.position[i]), "confidence": conf[i],
-            "confidence_score": round(float(conf_score[i]), 2), "reason": why,
-            "economic_impact": round(float(impact), 2),
-            "evidence": json.dumps({k: (round(float(v), 2) if isinstance(v, (int, float, np.floating, np.integer)) else v)
-                                    for k, v in evidence.items()}),
-            "expected_effect": effect, "created_at": created_at,
-        })
+        rows.append(
+            {
+                "sku_idx": int(i),
+                "sku": prod.at[i, "sku"],
+                "description": prod.at[i, "description"],
+                "category": prod.at[i, "category"],
+                "supplier_id": prod.at[i, "supplier_id"],
+                "segment": fs.segments[i],
+                "location": location,
+                "action": action,
+                "severity": severity,
+                "recommended_quantity": int(qty),
+                "stockout_date": stockout if stockout is not None else day(so[i]),
+                "inventory_position": float(st.position[i]),
+                "confidence": conf[i],
+                "confidence_score": round(float(conf_score[i]), 2),
+                "reason": why,
+                "economic_impact": round(float(impact), 2),
+                "evidence": json.dumps(
+                    {
+                        k: (round(float(v), 2) if isinstance(v, (int, float, np.floating, np.integer)) else v)
+                        for k, v in evidence.items()
+                    }
+                ),
+                "expected_effect": effect,
+                "created_at": created_at,
+            }
+        )
 
     for i in range(n):
         if not view.launched[i]:
             continue
         base_ev = {
-            "Inventory position": st.position[i], "On hand (network)": float(p.on_hand[i].sum()),
-            "On order": on_order[i], f"P50 demand over lead time + review": st.ltd.quantiles[0.5][i],
-            f"P90 demand over lead time + review": st.ltd.quantiles[0.9][i],
-            "Order-up-to level": st.target[i], "Safety stock": ss[i],
-            "Lead time P50 (days)": lt_p50[i], "Lead time P90 (days)": lt_p90[i],
-            "Service target": float(st.alpha[i]), "MOQ": int(prod.at[i, "moq"]), "Case pack": int(prod.at[i, "case_pack"]),
-            "Forecast model": fs.models[fs.selection.champion[i]].name, "Segment": fs.segments[i],
+            "Inventory position": st.position[i],
+            "On hand (network)": float(p.on_hand[i].sum()),
+            "On order": on_order[i],
+            "P50 demand over lead time + review": st.ltd.quantiles[0.5][i],
+            "P90 demand over lead time + review": st.ltd.quantiles[0.9][i],
+            "Order-up-to level": st.target[i],
+            "Safety stock": ss[i],
+            "Lead time P50 (days)": lt_p50[i],
+            "Lead time P90 (days)": lt_p90[i],
+            "Service target": float(st.alpha[i]),
+            "MOQ": int(prod.at[i, "moq"]),
+            "Case pack": int(prod.at[i, "case_pack"]),
+            "Forecast model": fs.models[fs.selection.champion[i]].name,
+            "Segment": fs.segments[i],
         }
         qty = int(st.order_qty[i])
         so_date = day(so[i])
@@ -142,42 +172,78 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
             if net_avail <= 0 or (unavoidable and so[i] <= 14):
                 gap_days = max(int(lt_p50[i] - max(so[i], 0)), 0)
                 lost = lost_before_new[i]
-                why = ("Out of stock in the network now." if net_avail <= 0 else
-                       f"Projected to run out on {so_date:%b %d}, {gap_days} days before an order placed today could arrive.")
+                why = (
+                    "Out of stock in the network now."
+                    if net_avail <= 0
+                    else f"Projected to run out on {so_date:%b %d}, {gap_days} days before an order placed today could arrive."
+                )
                 if i in next_po.index:
                     npo = next_po.loc[i]
-                    why += (f" Next receipt: {npo['po_id']}, {int(npo['quantity']):,} units, due "
-                            f"{day(npo['eday'] - t - 1):%b %d}" + (" (already late)." if npo["status"] == "DELAYED" else "."))
+                    why += (
+                        f" Next receipt: {npo['po_id']}, {int(npo['quantity']):,} units, due "
+                        f"{day(npo['eday'] - t - 1):%b %d}" + (" (already late)." if npo["status"] == "DELAYED" else ".")
+                    )
                 else:
                     why += " No purchase order is open."
                 if qty > 0:
                     why += f" A purchase of {qty:,} units is recommended on its own line."
-                add(i, "CRITICAL_STOCKOUT", "CRITICAL", 0, "NETWORK", why,
+                add(
+                    i,
+                    "CRITICAL_STOCKOUT",
+                    "CRITICAL",
+                    0,
+                    "NETWORK",
+                    why,
                     {**base_ev, "Expected units lost before a new order lands": lost},
-                    f"About {lost:,.0f} units of demand expected to be lost before a new order could land "
-                    "(open POs counted)", lost * cm[i])
+                    f"About {lost:,.0f} units of demand expected to be lost before a new order could land (open POs counted)",
+                    lost * cm[i],
+                )
                 acted = True
 
         if qty > 0 and not discontinued[i]:
-            ev = {**base_ev, "Raw requirement": st.raw_requirement[i], "Recommended (rounded)": qty,
-                  "To EAST_DC": int(st.east_qty[i]), "To WEST_DC": int(st.west_qty[i]),
-                  "Expected arrival": f"{arrival_new:%b %d}", "Purchase value": qty * cost[i]}
-            why = (f"Inventory position {st.position[i]:,.0f} is below the order-up-to level {st.target[i]:,.0f} "
-                   f"(demand over {lt_p50[i] + view.review_period_days:.0f} days at the {st.alpha[i]:.0%} quantile).")
+            ev = {
+                **base_ev,
+                "Raw requirement": st.raw_requirement[i],
+                "Recommended (rounded)": qty,
+                "To EAST_DC": int(st.east_qty[i]),
+                "To WEST_DC": int(st.west_qty[i]),
+                "Expected arrival": f"{arrival_new:%b %d}",
+                "Purchase value": qty * cost[i],
+            }
+            why = (
+                f"Inventory position {st.position[i]:,.0f} is below the order-up-to level {st.target[i]:,.0f} "
+                f"(demand over {lt_p50[i] + view.review_period_days:.0f} days at the {st.alpha[i]:.0%} quantile)."
+            )
             if so[i] >= 0:
                 why += f" Without an order, stock runs out on {so_date:%b %d}."
             if qty > st.raw_requirement[i] * 1.25:
                 why += f" MOQ / case pack round the order up from {st.raw_requirement[i]:,.0f} to {qty:,}."
             if low_margin[i]:
-                add(i, "LOW_MARGIN", "MEDIUM", qty, "NETWORK",
+                add(
+                    i,
+                    "LOW_MARGIN",
+                    "MEDIUM",
+                    qty,
+                    "NETWORK",
                     f"Would buy {qty:,} units, but contribution margin is {cm_pct[i]:.0%}, under the "
                     f"{biz['minimum_margin_pct']:.0%} threshold. Review price, cost or channel before buying.",
-                    ev, effect, protected[i])
+                    ev,
+                    effect,
+                    protected[i],
+                )
             elif conf[i] == "LOW" and rc["low_confidence_review"]:
-                add(i, "REVIEW_FORECAST", "MEDIUM", qty, "NETWORK",
+                add(
+                    i,
+                    "REVIEW_FORECAST",
+                    "MEDIUM",
+                    qty,
+                    "NETWORK",
                     why + f" Forecast confidence is LOW ({fs.segments[i].lower().replace('_', ' ')}, "
                     f"{int(hist_weeks[i])} weeks of history, {imputed_share[i]:.0%} of recent demand reconstructed).",
-                    ev, effect, protected[i])
+                    ev,
+                    effect,
+                    protected[i],
+                )
             else:
                 sev = "HIGH" if (so[i] >= 0 and so[i] < lt_p50[i] + 14) or protected[i] > 2000 else "MEDIUM"
                 add(i, "BUY", sev, qty, "NETWORK", why, ev, effect, protected[i])
@@ -188,13 +254,24 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
             po = next_po.loc[i]
             gap = int(po["eday"] - (t + 1) - so[i])
             if gap > rc["expedite_gap_days"]:
-                lost = float(expected_lost(stock_now[[i]], st.daily_fc[:, [i]], rec[:, [i]],
-                                           np.array([so[i] + gap]))[0])
-                add(i, "EXPEDITE", "HIGH", int(po["quantity"]), "NETWORK",
+                lost = float(expected_lost(stock_now[[i]], st.daily_fc[:, [i]], rec[:, [i]], np.array([so[i] + gap]))[0])
+                add(
+                    i,
+                    "EXPEDITE",
+                    "HIGH",
+                    int(po["quantity"]),
+                    "NETWORK",
                     f"Projected out on {so_date:%b %d}; open PO {po['po_id']} is due {gap} days later.",
-                    {**base_ev, "PO": po["po_id"], "PO status": po["status"],
-                     "PO expected": f"{day(po['eday'] - t - 1):%b %d}", "Days short": gap},
-                    f"Pulling the PO forward covers about {lost:,.0f} units of demand", lost * cm[i])
+                    {
+                        **base_ev,
+                        "PO": po["po_id"],
+                        "PO status": po["status"],
+                        "PO expected": f"{day(po['eday'] - t - 1):%b %d}",
+                        "Days short": gap,
+                    },
+                    f"Pulling the PO forward covers about {lost:,.0f} units of demand",
+                    lost * cm[i],
+                )
                 acted = True
 
         # inter-DC transfer
@@ -210,12 +287,22 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
                     q = int(round_up_to_pack(np.array([q]), np.array([prod.at[i, "case_pack"]]))[0])
                     if q > 0:
                         saving = q * biz["cross_dc_extra_cost_usd"]
-                        add(i, "TRANSFER", "MEDIUM", q, DC_NAMES[poor],
+                        add(
+                            i,
+                            "TRANSFER",
+                            "MEDIUM",
+                            q,
+                            DC_NAMES[poor],
                             f"{DC_NAMES[poor]} has {cover_dc[pi]:.1f} weeks of cover, {DC_NAMES[rich]} has "
                             f"{cover_dc[ri]:.1f}. Move {q:,} units instead of cross-shipping orders.",
-                            {**base_ev, f"{DC_NAMES[poor]} available": float(p.available[i, poor]),
-                             f"{DC_NAMES[rich]} available": float(p.available[i, rich])},
-                            f"Avoids about ${saving:,.0f} of cross-DC shipping", saving)
+                            {
+                                **base_ev,
+                                f"{DC_NAMES[poor]} available": float(p.available[i, poor]),
+                                f"{DC_NAMES[rich]} available": float(p.available[i, rich]),
+                            },
+                            f"Avoids about ${saving:,.0f} of cross-DC shipping",
+                            saving,
+                        )
                         acted = True
 
         # Amazon FBA
@@ -228,21 +315,40 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
                 fba_daily = st.daily_fc[:, i] * st.fba_share[i]
                 dos = (p.available[i, FBA] + p.fba_transfer[i]) / max(fba_daily[:28].mean(), 1e-9)
                 remaining = {DC_NAMES[r["source"]]: float(p.available[i, r["source"]] - r["qty"]) for r in moves}
-                fba_so = stockout_day(project(np.array([p.available[i, FBA] + p.fba_transfer[i] + p.fba_inbound[i]]),
-                                              fba_daily[:, None], np.zeros((horizon, 1)), horizon))[0]
+                fba_so = stockout_day(
+                    project(
+                        np.array([p.available[i, FBA] + p.fba_transfer[i] + p.fba_inbound[i]]),
+                        fba_daily[:, None],
+                        np.zeros((horizon, 1)),
+                        horizon,
+                    )
+                )[0]
                 short_b = expected_shortfall(_fba_samples(st, i), f["fba_position"])
                 short_a = expected_shortfall(_fba_samples(st, i), f["fba_position"] + sent)
-                add(i, "SEND_TO_FBA", "HIGH" if dos < st.fba.attrs["transit_p90"] else "MEDIUM", sent, "AMAZON_FBA",
+                add(
+                    i,
+                    "SEND_TO_FBA",
+                    "HIGH" if dos < st.fba.attrs["transit_p90"] else "MEDIUM",
+                    sent,
+                    "AMAZON_FBA",
                     f"Amazon has {dos:.0f} days of supply; replenishment takes up to "
                     f"{st.fba.attrs['transit_p90']:.0f} days (pick + transit). Send {sent:,} from {src}.",
-                    {"FBA available": float(p.available[i, FBA]), "FBA inbound": float(p.fba_inbound[i]),
-                     "FBA reserved": float(p.fba_reserved[i]), "FBA transfer": float(p.fba_transfer[i]),
-                     "FBA days of supply": dos, "FBA target": f["fba_target"], "FBA position": f["fba_position"],
-                     "Amazon share of demand": st.fba_share[i], "Source": src,
-                     **{f"{k} after transfer": v for k, v in remaining.items()}},
+                    {
+                        "FBA available": float(p.available[i, FBA]),
+                        "FBA inbound": float(p.fba_inbound[i]),
+                        "FBA reserved": float(p.fba_reserved[i]),
+                        "FBA transfer": float(p.fba_transfer[i]),
+                        "FBA days of supply": dos,
+                        "FBA target": f["fba_target"],
+                        "FBA position": f["fba_position"],
+                        "Amazon share of demand": st.fba_share[i],
+                        "Source": src,
+                        **{f"{k} after transfer": v for k, v in remaining.items()},
+                    },
                     f"Expected Amazon units short over the replenishment window: {short_b:,.1f} -> {short_a:,.1f}",
                     (short_b - short_a) * prod.at[i, "contribution_fba"],
-                    stockout=day(fba_so) if fba_so >= 0 else pd.NaT)
+                    stockout=day(fba_so) if fba_so >= 0 else pd.NaT,
+                )
                 acted = True
 
         # excess
@@ -250,47 +356,104 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
             excess_units = stock_now[i] + on_order[i] - inv["excess_weeks_of_cover"] * weekly13[i]
             val = excess_units * cost[i]
             if val >= rc["excess_value_min_usd"] and qty == 0:
-                add(i, "EXCESS", "LOW", int(excess_units), "NETWORK",
+                add(
+                    i,
+                    "EXCESS",
+                    "LOW",
+                    int(excess_units),
+                    "NETWORK",
                     f"{cover_now[i]:.0f} weeks of cover against a {inv['excess_weeks_of_cover']}-week ceiling: "
                     f"${val:,.0f} tied up beyond it." + (" Liquidation announced." if discontinued[i] else ""),
                     {**base_ev, "Weeks of cover": cover_now[i], "Excess units": excess_units, "Excess value": val},
                     f"Carrying cost of the excess: about ${val * biz['holding_cost_annual_pct']:,.0f} a year",
-                    -val * biz["holding_cost_annual_pct"])
+                    -val * biz["holding_cost_annual_pct"],
+                )
                 acted = True
 
         # censored history (information for the planner)
         if imputed_share[i] > 0.20:
-            add(i, "STOCKOUT_CENSORED", "INFO", 0, "NETWORK",
+            add(
+                i,
+                "STOCKOUT_CENSORED",
+                "INFO",
+                0,
+                "NETWORK",
                 f"{imputed_share[i]:.0%} of the last 8 weeks' demand was reconstructed: stockouts held sales "
                 f"down ({h.observed[-8:, i].sum():,.0f} sold vs {h.Y[-8:, i].sum():,.0f} estimated demand).",
-                {"Observed sales, 8 weeks": float(h.observed[-8:, i].sum()), "Reconstructed demand, 8 weeks": float(h.Y[-8:, i].sum()),
-                 "Imputed share": float(imputed_share[i])},
-                "The forecast uses reconstructed demand, not raw sales", 0.0)
+                {
+                    "Observed sales, 8 weeks": float(h.observed[-8:, i].sum()),
+                    "Reconstructed demand, 8 weeks": float(h.Y[-8:, i].sum()),
+                    "Imputed share": float(imputed_share[i]),
+                },
+                "The forecast uses reconstructed demand, not raw sales",
+                0.0,
+            )
 
         if not acted and imputed_share[i] <= 0.20:
-            add(i, "NO_ACTION", "INFO", 0, "NETWORK", "Position covers demand over lead time + review at the service target.",
-                base_ev, effect, 0.0)
+            add(
+                i,
+                "NO_ACTION",
+                "INFO",
+                0,
+                "NETWORK",
+                "Position covers demand over lead time + review at the service target.",
+                base_ev,
+                effect,
+                0.0,
+            )
 
     out = pd.DataFrame(rows)
     out["priority_score"] = out["severity"].map(SEVERITY_RANK) * 1e6 + out["economic_impact"].abs().clip(upper=9.99e5)
     out = out.sort_values("priority_score", ascending=False).reset_index(drop=True)
     out.insert(0, "recommendation_id", [f"REC-{plan_date:%Y%m%d}-{k + 1:04d}" for k in range(len(out))])
     out["priority"] = np.arange(1, len(out) + 1)
-    sku_frame = pd.DataFrame({
-        "sku_idx": np.arange(n), "segment": fs.segments, "champion_model": [fs.models[c].name for c in fs.selection.champion],
-        "selection_reason": fs.selection.reason, "confidence": conf, "confidence_score": conf_score,
-        "lt_p50": lt_p50, "lt_p90": lt_p90, "ltd_mean": mean_ltd, "ltd_p50": st.ltd.quantiles[0.5],
-        "ltd_p80": st.ltd.quantiles[0.8], "ltd_p90": st.ltd.quantiles[0.9], "ltd_p95": st.ltd.quantiles[0.95],
-        "safety_stock": ss, "order_up_to": st.target, "reorder_point": st.target, "inventory_position": st.position,
-        "stock_now": stock_now, "on_order": on_order, "recommended_quantity": st.order_qty,
-        "raw_requirement": st.raw_requirement, "stockout_day": so, "stockout_day_with_order": so_new,
-        "weekly_demand": weekly13, "weeks_of_cover": cover_now, "weeks_of_cover_after": cover_after,
-        "service_before": svc_before, "service_after": svc_after, "shortfall_before": short_before,
-        "imputed_share_8w": imputed_share, "history_weeks": hist_weeks, "fba_share": st.fba_share,
-        "low_margin": low_margin, "discontinued": discontinued,
-    })
-    return {"recommendations": out, "sku_plan": sku_frame, "path": path, "path_with_order": path_new,
-            "receipts": rec, "receipts_with_order": rec_new, "plan_date": plan_date}
+    sku_frame = pd.DataFrame(
+        {
+            "sku_idx": np.arange(n),
+            "segment": fs.segments,
+            "champion_model": [fs.models[c].name for c in fs.selection.champion],
+            "selection_reason": fs.selection.reason,
+            "confidence": conf,
+            "confidence_score": conf_score,
+            "lt_p50": lt_p50,
+            "lt_p90": lt_p90,
+            "ltd_mean": mean_ltd,
+            "ltd_p50": st.ltd.quantiles[0.5],
+            "ltd_p80": st.ltd.quantiles[0.8],
+            "ltd_p90": st.ltd.quantiles[0.9],
+            "ltd_p95": st.ltd.quantiles[0.95],
+            "safety_stock": ss,
+            "order_up_to": st.target,
+            "reorder_point": st.target,
+            "inventory_position": st.position,
+            "stock_now": stock_now,
+            "on_order": on_order,
+            "recommended_quantity": st.order_qty,
+            "raw_requirement": st.raw_requirement,
+            "stockout_day": so,
+            "stockout_day_with_order": so_new,
+            "weekly_demand": weekly13,
+            "weeks_of_cover": cover_now,
+            "weeks_of_cover_after": cover_after,
+            "service_before": svc_before,
+            "service_after": svc_after,
+            "shortfall_before": short_before,
+            "imputed_share_8w": imputed_share,
+            "history_weeks": hist_weeks,
+            "fba_share": st.fba_share,
+            "low_margin": low_margin,
+            "discontinued": discontinued,
+        }
+    )
+    return {
+        "recommendations": out,
+        "sku_plan": sku_frame,
+        "path": path,
+        "path_with_order": path_new,
+        "receipts": rec,
+        "receipts_with_order": rec_new,
+        "plan_date": plan_date,
+    }
 
 
 def _fba_samples(st, i):

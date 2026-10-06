@@ -33,16 +33,21 @@ from qstats_planner.simulation.view import PlannerView
 
 
 class LegacyPlanner:
-    def __init__(self, cfg: dict, safety_days: float | None = None, alpha: float | None = None,
-                 seasonal_prior=None, name: str | None = None):
+    def __init__(
+        self,
+        cfg: dict,
+        safety_days: float | None = None,
+        alpha: float | None = None,
+        seasonal_prior=None,
+        name: str | None = None,
+    ):
         lg = cfg["legacy"]
         self.alpha = lg["ses_alpha"] if alpha is None else alpha
         self.safety_days = lg["safety_days"] if safety_days is None else safety_days
         self.fba_cover = lg["fba_cover_days"]
         self.fba_trigger = lg["fba_trigger_extra_days"]
         sim = cfg["simulation"]
-        self.fba_replenish_days = (sim["transfer_pick_days"] + float(np.mean(sim["fba_transit_days"]))
-                                   + sim["review_period_days"])
+        self.fba_replenish_days = sim["transfer_pick_days"] + float(np.mean(sim["fba_transit_days"])) + sim["review_period_days"]
         self.prior = seasonal_prior  # optional: "Legacy + seasonal prior" comparison row
         self.name = name or f"legacy_{int(self.safety_days)}d"
         self.history: list[dict] = []
@@ -110,8 +115,11 @@ class LegacyPlanner:
         p = view.position
         fba_pos = p.on_hand[:, FBA] + p.fba_inbound + p.dc_committed.sum(axis=1)
         trigger = fba_rate * (self.fba_replenish_days + self.fba_trigger)
-        send = np.where(prod["fba_enabled"] & (fba_pos < trigger) & (fba_rate > 0),
-                        fba_rate * (self.fba_cover + self.fba_replenish_days) - fba_pos, 0)
+        send = np.where(
+            prod["fba_enabled"] & (fba_pos < trigger) & (fba_rate > 0),
+            fba_rate * (self.fba_cover + self.fba_replenish_days) - fba_pos,
+            0,
+        )
         send = round_up_to_pack(send, prod["case_pack"].to_numpy())
         avail = p.available
         for i in np.where(send > 0)[0]:

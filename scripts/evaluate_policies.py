@@ -91,8 +91,8 @@ def main() -> int:
     t0 = time.time()
     frames, cals = [], []
     with ProcessPoolExecutor(max_workers=args.workers, initializer=_init) as ex:
-        for pop, seed, res, secs in ex.map(_task, tasks):
-            for name, df, cal in res:
+        for _pop, seed, res, secs in ex.map(_task, tasks):
+            for _name, df, cal in res:
                 frames.append(df)
                 if cal is not None:
                     cals.append(cal)
@@ -107,8 +107,14 @@ def main() -> int:
         g = g.reset_index(drop=True)
         for subset, m in (("headline", ~g["event_sku"]), ("all", g["event_sku"] | True), ("event_skus", g["event_sku"])):
             if m.any():
-                rows.append({"variant": variant, "seed": seed, "subset": subset,
-                             **comparison.summarise(g[m.to_numpy()].reset_index(drop=True), cfg)})
+                rows.append(
+                    {
+                        "variant": variant,
+                        "seed": seed,
+                        "subset": subset,
+                        **comparison.summarise(g[m.to_numpy()].reset_index(drop=True), cfg),
+                    }
+                )
     summary = pd.DataFrame(rows)
     summary.to_parquet(out / "summary.parquet", index=False)
     head = per_sku[~per_sku["event_sku"]]
@@ -119,32 +125,49 @@ def main() -> int:
         pv = {v: g.reset_index(drop=True) for v, g in head[head["seed"] == seed].groupby("variant")}
         if not set(runner.LEGACY_FAMILY + runner.QSTATS_FAMILY) <= set(pv):
             continue
-        b = comparison.bootstrap(pv, cfg, runner.LEGACY_REF, runner.LEGACY_FAMILY, runner.QSTATS_FAMILY,
-                                 n_boot=1000 if seed == ref_seed else 200)
+        b = comparison.bootstrap(
+            pv, cfg, runner.LEGACY_REF, runner.LEGACY_FAMILY, runner.QSTATS_FAMILY, n_boot=1000 if seed == ref_seed else 200
+        )
         b["seed"] = seed
         boots.append(b)
     if boots:
         pd.concat(boots, ignore_index=True).to_parquet(out / "bootstrap.parquet", index=False)
 
-    meta = {"population": args.population, "seeds": seeds, "variants": names,
-            "runtime_seconds": round(time.time() - t0, 1), "run_at": pd.Timestamp.now().isoformat(timespec="seconds")}
+    meta = {
+        "population": args.population,
+        "seeds": seeds,
+        "variants": names,
+        "runtime_seconds": round(time.time() - t0, 1),
+        "run_at": pd.Timestamp.now().isoformat(timespec="seconds"),
+    }
     (out / "run.json").write_text(json.dumps(meta, indent=2))
     show = summary[(summary["seed"] == ref_seed) & (summary["subset"] == "headline")].set_index("variant")
-    cols = ["fill_rate", "in_stock_rate", "average_inventory_value", "lost_contribution", "inventory_turns",
-            "excess_inventory_value", "wape", "forecast_bias"]
+    cols = [
+        "fill_rate",
+        "in_stock_rate",
+        "average_inventory_value",
+        "lost_contribution",
+        "inventory_turns",
+        "excess_inventory_value",
+        "wape",
+        "forecast_bias",
+    ]
     print(show[cols].round(3).to_string())
     if boots:
         b = pd.concat(boots)
         points = {}
         for seed in seeds:
-            sm = {v: comparison.summarise(g.reset_index(drop=True), cfg)
-                  for v, g in head[head["seed"] == seed].groupby("variant")}
+            sm = {
+                v: comparison.summarise(g.reset_index(drop=True), cfg) for v, g in head[head["seed"] == seed].groupby("variant")
+            }
             points[int(seed)] = comparison.matched_comparison(sm, runner.LEGACY_REF, runner.LEGACY_FAMILY, runner.QSTATS_FAMILY)
         (out / "matched.json").write_text(json.dumps(points, indent=2))
         b0 = b[b["seed"] == ref_seed]
-        print("\nprimary metric: inventory saving at Legacy-30's fill rate, seed %d: %.3f (90%% bootstrap interval %.3f to %.3f)" % (
-            ref_seed, points[ref_seed]["inventory_saving_pct"], b0["inventory_saving_pct"].quantile(0.05),
-            b0["inventory_saving_pct"].quantile(0.95)))
+        lo, hi = b0["inventory_saving_pct"].quantile([0.05, 0.95])
+        print(
+            f"\nprimary metric: inventory saving at Legacy-30's fill rate, seed {ref_seed}: "
+            f"{points[ref_seed]['inventory_saving_pct']:.3f} (90% bootstrap interval {lo:.3f} to {hi:.3f})"
+        )
         print("point estimate by seed:", {s_: round(float(v["inventory_saving_pct"]), 3) for s_, v in points.items()})
     print(f"total {time.time() - t0:.0f}s")
     return 0

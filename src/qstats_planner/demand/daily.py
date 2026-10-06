@@ -26,12 +26,16 @@ def daily_sku_demand(clean: pd.DataFrame, trading_days: pd.DatetimeIndex, life: 
     """date, sku, description, units, revenue, average_price, gross_units_sold, returns, net_units."""
     sale = clean["line_type"] == LineType.SALE
     demand = sale & ~clean["cancelled"] & ~clean["bulk_order"]
-    g = clean.assign(
-        units=np.where(demand, clean["quantity"], 0.0),
-        revenue=np.where(demand, clean["quantity"] * clean["unit_price"], 0.0),
-        gross_units_sold=np.where(sale, clean["quantity"], 0.0),
-        returns=np.where(clean["line_type"] == LineType.RETURN, -clean["quantity"], 0.0),
-    ).groupby(["sku", "date"])[["units", "revenue", "gross_units_sold", "returns"]].sum()
+    g = (
+        clean.assign(
+            units=np.where(demand, clean["quantity"], 0.0),
+            revenue=np.where(demand, clean["quantity"] * clean["unit_price"], 0.0),
+            gross_units_sold=np.where(sale, clean["quantity"], 0.0),
+            returns=np.where(clean["line_type"] == LineType.RETURN, -clean["quantity"], 0.0),
+        )
+        .groupby(["sku", "date"])[["units", "revenue", "gross_units_sold", "returns"]]
+        .sum()
+    )
 
     frames = []
     trading = pd.DatetimeIndex(trading_days)
@@ -46,6 +50,5 @@ def daily_sku_demand(clean: pd.DataFrame, trading_days: pd.DatetimeIndex, life: 
     out["average_price"] = np.where(out["units"] > 0, out["revenue"] / out["units"].where(out["units"] > 0), np.nan)
     desc = clean.drop_duplicates("sku").set_index("sku")["description"]
     out["description"] = out["sku"].map(desc)
-    cols = ["date", "sku", "description", "units", "revenue", "average_price",
-            "gross_units_sold", "returns", "net_units"]
+    cols = ["date", "sku", "description", "units", "revenue", "average_price", "gross_units_sold", "returns", "net_units"]
     return out[cols].sort_values(["sku", "date"]).reset_index(drop=True)

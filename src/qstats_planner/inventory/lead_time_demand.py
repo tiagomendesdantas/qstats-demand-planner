@@ -27,10 +27,10 @@ from qstats_planner.inventory.lead_time import LeadTimeDistribution
 
 @dataclass
 class LTDResult:
-    mean: np.ndarray       # (n,) E[D]
-    quantiles: dict        # q -> (n,)
-    target: np.ndarray     # (n,) Q_alpha
-    samples: list          # per SKU (values, weights), for service and shortfall calculations
+    mean: np.ndarray  # (n,) E[D]
+    quantiles: dict  # q -> (n,)
+    target: np.ndarray  # (n,) Q_alpha
+    samples: list  # per SKU (values, weights), for service and shortfall calculations
 
 
 def cumulative_forecast(daily_fc: np.ndarray, days: np.ndarray) -> np.ndarray:
@@ -52,9 +52,17 @@ def _compact(dist: LeadTimeDistribution, max_points: int = 16) -> tuple[np.ndarr
     return np.round(days), prob
 
 
-def lead_time_demand(daily_fc: np.ndarray, lt: list[LeadTimeDistribution], review_days: float,
-                     segments: np.ndarray, errors: ErrorTable, alpha: np.ndarray, level: np.ndarray,
-                     qs=(0.5, 0.8, 0.9, 0.95), extra_days: np.ndarray | None = None) -> LTDResult:
+def lead_time_demand(
+    daily_fc: np.ndarray,
+    lt: list[LeadTimeDistribution],
+    review_days: float,
+    segments: np.ndarray,
+    errors: ErrorTable,
+    alpha: np.ndarray,
+    level: np.ndarray,
+    qs=(0.5, 0.8, 0.9, 0.95),
+    extra_days: np.ndarray | None = None,
+) -> LTDResult:
     n = daily_fc.shape[1]
     mean = np.zeros(n)
     target = np.zeros(n)
@@ -65,7 +73,7 @@ def lead_time_demand(daily_fc: np.ndarray, lt: list[LeadTimeDistribution], revie
     for i in range(n):
         days, prob = _compact(lt[i])
         horizon = days + review_days + extra[i]
-        F = cumulative_forecast(daily_fc[:, [i]], horizon)[:, 0]          # (K,)
+        F = cumulative_forecast(daily_fc[:, [i]], horizon)[:, 0]  # (K,)
         vals, wts = [], []
         for k in range(len(horizon)):
             e = errors.errors(segments[i], horizon[k] / 7.0)
@@ -93,7 +101,8 @@ def expected_shortfall(samples: tuple[np.ndarray, np.ndarray], stock: float) -> 
     return float((np.maximum(v - stock, 0) * w).sum() / w.sum())
 
 
-def normal_approximation(mean_daily: np.ndarray, sd_daily: np.ndarray, lt_mean: np.ndarray, lt_sd: np.ndarray,
-                         z: np.ndarray) -> np.ndarray:
+def normal_approximation(
+    mean_daily: np.ndarray, sd_daily: np.ndarray, lt_mean: np.ndarray, lt_sd: np.ndarray, z: np.ndarray
+) -> np.ndarray:
     """Textbook cross-check: SS = z * sqrt(L sigma_d^2 + d^2 sigma_L^2)."""
     return z * np.sqrt(lt_mean * sd_daily**2 + mean_daily**2 * lt_sd**2)

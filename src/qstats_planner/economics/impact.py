@@ -1,15 +1,15 @@
 """Portfolio economics of a plan, computed from the plan state (nothing hard-coded).
 
-    inventory value          on hand at every location x landed unit cost
-    purchase recommendations purchase lines and their value at cost
-    SKUs at stockout risk    projected to run out within `stockout_risk_weeks` without a new order
-    contribution at risk     expected units short over lead time + review at today's position,
-                             x contribution per unit
-    excess inventory value   stock beyond `excess_weeks_of_cover` of forecast demand, at cost
-    service level            demand-weighted probability of covering lead time + review demand,
-                             at today's position and after the recommended orders
-    forecast WAPE / bias     champion one-week-ahead errors over the last 26 scored weeks
-    inventory turns          trailing 13-week cost of goods sold, annualised / inventory value
+inventory value          on hand at every location x landed unit cost
+purchase recommendations purchase lines and their value at cost
+SKUs at stockout risk    projected to run out within `stockout_risk_weeks` without a new order
+contribution at risk     expected units short over lead time + review at today's position,
+                         x contribution per unit
+excess inventory value   stock beyond `excess_weeks_of_cover` of forecast demand, at cost
+service level            demand-weighted probability of covering lead time + review demand,
+                         at today's position and after the recommended orders
+forecast WAPE / bias     champion one-week-ahead errors over the last 26 scored weeks
+inventory turns          trailing 13-week cost of goods sold, annualised / inventory value
 """
 
 from __future__ import annotations

@@ -28,8 +28,8 @@ from qstats_planner.simulation.view import PlannerView, Position
 
 @dataclass
 class Decisions:
-    orders: list[tuple[int, int, int]] = field(default_factory=list)       # (sku, qty_east, qty_west)
-    transfers: list[tuple[int, int, int]] = field(default_factory=list)    # (sku, qty, source_dc)
+    orders: list[tuple[int, int, int]] = field(default_factory=list)  # (sku, qty_east, qty_west)
+    transfers: list[tuple[int, int, int]] = field(default_factory=list)  # (sku, qty, source_dc)
     notes: dict = field(default_factory=dict)
 
 
@@ -40,8 +40,8 @@ class Engine:
         sim = cfg["simulation"]
         n_d, n_s, n_l = env.baseline.shape
         self.n_days, self.n_sku, self.n_loc = n_d, n_s, n_l
-        self.warm_end = sim["warmup_weeks"] * 7           # first day with real inventory
-        self.first_planning_day = self.warm_end - 1       # the Sunday that closes the warm-up
+        self.warm_end = sim["warmup_weeks"] * 7  # first day with real inventory
+        self.first_planning_day = self.warm_end - 1  # the Sunday that closes the warm-up
         self.review = sim["review_period_days"]
         self.pick_days = sim["transfer_pick_days"]
         self.prod_share = cfg["suppliers"]["production_share_of_lead_time"]
@@ -56,9 +56,9 @@ class Engine:
         self.pos: list[dict] = []
         self.transfers: list[dict] = []
         self.fc_release: dict[int, list[tuple[int, float]]] = {}
-        self._arrivals: dict[int, list[int]] = {}   # day -> PO indices arriving
-        self._ships: dict[int, list[int]] = {}      # day -> transfer indices shipping
-        self._lands: dict[int, list[int]] = {}      # day -> transfer indices arriving at FBA
+        self._arrivals: dict[int, list[int]] = {}  # day -> PO indices arriving
+        self._ships: dict[int, list[int]] = {}  # day -> transfer indices shipping
+        self._lands: dict[int, list[int]] = {}  # day -> transfer indices arriving at FBA
         self.day = 0
 
         # history (observable)
@@ -71,7 +71,7 @@ class Engine:
         self.transfer_in = z()
         self.transfer_out = z()
         self.write_off = z()
-        self.cross_ship = z()   # units shipped from this DC to the other DC's region
+        self.cross_ship = z()  # units shipped from this DC to the other DC's region
         self.reserved_hist = np.zeros((n_d, n_s))
         self.transfer_hist = np.zeros((n_d, n_s))
         self.inbound_hist = np.zeros((n_d, n_s))
@@ -94,8 +94,11 @@ class Engine:
     def position(self) -> Position:
         avail = self._available()
         return Position(
-            on_hand=self.on_hand.copy(), available=avail, fba_reserved=self.fba_reserved.copy(),
-            fba_transfer=self.fba_transfer.copy(), fba_inbound=self.fba_inbound.copy(),
+            on_hand=self.on_hand.copy(),
+            available=avail,
+            fba_reserved=self.fba_reserved.copy(),
+            fba_transfer=self.fba_transfer.copy(),
+            fba_inbound=self.fba_inbound.copy(),
             dc_committed=self.dc_committed.copy(),
         )
 
@@ -112,12 +115,24 @@ class Engine:
         known = ~env.unknown_mask
         known[: self.warm_end] = False  # warm-up: stock was ample, snapshots are not kept
         return PlannerView(
-            t=t, days=env.days, calendar=env.calendar, trading=env.trading, products=env.products,
-            suppliers=env.suppliers, sales=self.sales, opening_available=self.opening_available,
-            closing_available=self.closing_available, on_hand_hist=self.closing_on_hand,
-            snapshot_known=known, position=self.position(), purchase_orders=self.pos,
-            lead_time_history=env.lead_time_history, events=env.events, transfers=self.transfers,
-            first_planning_day=self.first_planning_day, launch_day_known=env.launch_day,
+            t=t,
+            days=env.days,
+            calendar=env.calendar,
+            trading=env.trading,
+            products=env.products,
+            suppliers=env.suppliers,
+            sales=self.sales,
+            opening_available=self.opening_available,
+            closing_available=self.closing_available,
+            on_hand_hist=self.closing_on_hand,
+            snapshot_known=known,
+            position=self.position(),
+            purchase_orders=self.pos,
+            lead_time_history=env.lead_time_history,
+            events=env.events,
+            transfers=self.transfers,
+            first_planning_day=self.first_planning_day,
+            launch_day_known=env.launch_day,
             review_period_days=self.review,
         )
 
@@ -130,12 +145,21 @@ class Engine:
         lt, cancelled = env.lead_time(sku, self.day)
         sup = env.suppliers.iloc[int(env.products.at[sku, "supplier_idx"])]
         quoted = int(sup["quoted_lead_time_days"])
-        self.pos.append({
-            "po_id": f"PO-{len(self.pos) + 1:06d}", "sku_idx": sku, "supplier_id": sup["supplier_id"],
-            "qty": (int(qty_east), int(qty_west)), "order_day": self.day,
-            "expected_day": self.day + quoted, "arrival_day": self.day + lt, "lead_time": lt,
-            "production_days": int(round(self.prod_share * lt)), "cancelled": cancelled, "policy": policy,
-        })
+        self.pos.append(
+            {
+                "po_id": f"PO-{len(self.pos) + 1:06d}",
+                "sku_idx": sku,
+                "supplier_id": sup["supplier_id"],
+                "qty": (int(qty_east), int(qty_west)),
+                "order_day": self.day,
+                "expected_day": self.day + quoted,
+                "arrival_day": self.day + lt,
+                "lead_time": lt,
+                "production_days": int(round(self.prod_share * lt)),
+                "cancelled": cancelled,
+                "policy": policy,
+            }
+        )
         if not cancelled:
             self._arrivals.setdefault(self.day + lt, []).append(len(self.pos) - 1)
 
@@ -147,8 +171,17 @@ class Engine:
         self.dc_committed[sku, source] += qty
         transit = int(self.env.fba_transit[min(self.day // 7, self.env.fba_transit.shape[0] - 1), sku])
         ship = self.day + self.pick_days
-        self.transfers.append({"sku_idx": sku, "qty": qty, "source": source, "decided_day": self.day,
-                               "ship_day": ship, "arrive_day": ship + transit, "policy": policy})
+        self.transfers.append(
+            {
+                "sku_idx": sku,
+                "qty": qty,
+                "source": source,
+                "decided_day": self.day,
+                "ship_day": ship,
+                "arrive_day": ship + transit,
+                "policy": policy,
+            }
+        )
         self._ships.setdefault(ship, []).append(len(self.transfers) - 1)
         self._lands.setdefault(ship + transit, []).append(len(self.transfers) - 1)
 
@@ -157,8 +190,9 @@ class Engine:
             self.place_order(sku, qe, qw, policy)
         for sku, qty, src in d.transfers:
             self.place_transfer(sku, qty, src, policy)
-        self.decision_log.append({"day": self.day, "policy": policy, "orders": len(d.orders),
-                                  "transfers": len(d.transfers), **d.notes})
+        self.decision_log.append(
+            {"day": self.day, "policy": policy, "orders": len(d.orders), "transfers": len(d.transfers), **d.notes}
+        )
 
     # ------------------------------------------------------------------ one day
 
@@ -221,8 +255,8 @@ class Engine:
             left = avail - sold
             unmet = demand - sold
             e, w_ = DCS
-            to_w = np.minimum(unmet[:, w_], left[:, e])     # EAST ships to WEST customers
-            to_e = np.minimum(unmet[:, e], left[:, w_])     # WEST ships to EAST customers
+            to_w = np.minimum(unmet[:, w_], left[:, e])  # EAST ships to WEST customers
+            to_e = np.minimum(unmet[:, e], left[:, w_])  # WEST ships to EAST customers
             self.cross_ship[t, :, e] = to_w
             self.cross_ship[t, :, w_] = to_e
             shipped = sold.copy()

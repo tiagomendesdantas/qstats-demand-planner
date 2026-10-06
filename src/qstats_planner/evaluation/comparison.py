@@ -15,10 +15,25 @@ import pandas as pd
 from qstats_planner.simulation.environment import FBA
 
 PER_SKU_COLUMNS = [
-    "demand", "sold", "lost", "lost_contribution", "inventory_value_days", "inventory_units_days",
-    "cogs", "stockout_days", "active_days", "excess_value", "purchase_value", "purchase_units",
-    "in_transit_value_days", "ending_position_value", "cross_ship_units", "fc_abs_error",
-    "fc_error", "fc_actual", "days",
+    "demand",
+    "sold",
+    "lost",
+    "lost_contribution",
+    "inventory_value_days",
+    "inventory_units_days",
+    "cogs",
+    "stockout_days",
+    "active_days",
+    "excess_value",
+    "purchase_value",
+    "purchase_units",
+    "in_transit_value_days",
+    "ending_position_value",
+    "cross_ship_units",
+    "fc_abs_error",
+    "fc_error",
+    "fc_actual",
+    "days",
 ]
 
 
@@ -40,7 +55,7 @@ def per_sku(env, eng, policy_history: list[dict], cfg: dict, start: int, end: in
     fba_out = oa[:, :, FBA] <= 0
     life = np.zeros(B.shape[:2], bool)
     for i in range(env.n_sku):
-        life[max(env.launch_day[i] - start, 0): max(env.end_day[i] - start + 1, 0), i] = True
+        life[max(env.launch_day[i] - start, 0) : max(env.end_day[i] - start + 1, 0), i] = True
     act = life & env.trading[start:end, None]
     fba_on = p["fba_enabled"].to_numpy(bool)
     stockout = (direct_out & act).sum(0) + (fba_out & act & fba_on[None]).sum(0)
@@ -71,23 +86,35 @@ def per_sku(env, eng, policy_history: list[dict], cfg: dict, start: int, end: in
     for h in policy_history:
         t = h["t"]
         if t + 1 >= start and t + 8 <= end:
-            actual = env.baseline[t + 1: t + 8].sum(axis=(0, 2))
+            actual = env.baseline[t + 1 : t + 8].sum(axis=(0, 2))
             f = np.nan_to_num(h["weekly_fc_1"])
             fae += np.abs(f - actual)
             fe += f - actual
             fa += actual
     cross = eng.cross_ship[start:end].sum(axis=(0, 2))
-    out = pd.DataFrame({
-        "demand": B.sum(axis=(0, 2)), "sold": S.sum(axis=(0, 2)), "lost": L.sum(axis=(0, 2)),
-        "lost_contribution": (L * contrib[None]).sum(axis=(0, 2)),
-        "inventory_value_days": on_hand.sum(0) * cost, "inventory_units_days": on_hand.sum(0),
-        "cogs": S.sum(axis=(0, 2)) * cost, "stockout_days": stockout, "active_days": active,
-        "excess_value": excess_units * cost, "purchase_value": pu * cost, "purchase_units": pu,
-        "in_transit_value_days": transit_val * cost,
-        "ending_position_value": (end_stock + open_end) * cost,
-        "cross_ship_units": cross, "fc_abs_error": fae, "fc_error": fe, "fc_actual": fa,
-        "days": np.full(env.n_sku, days),
-    })
+    out = pd.DataFrame(
+        {
+            "demand": B.sum(axis=(0, 2)),
+            "sold": S.sum(axis=(0, 2)),
+            "lost": L.sum(axis=(0, 2)),
+            "lost_contribution": (L * contrib[None]).sum(axis=(0, 2)),
+            "inventory_value_days": on_hand.sum(0) * cost,
+            "inventory_units_days": on_hand.sum(0),
+            "cogs": S.sum(axis=(0, 2)) * cost,
+            "stockout_days": stockout,
+            "active_days": active,
+            "excess_value": excess_units * cost,
+            "purchase_value": pu * cost,
+            "purchase_units": pu,
+            "in_transit_value_days": transit_val * cost,
+            "ending_position_value": (end_stock + open_end) * cost,
+            "cross_ship_units": cross,
+            "fc_abs_error": fae,
+            "fc_error": fe,
+            "fc_actual": fa,
+            "days": np.full(env.n_sku, days),
+        }
+    )
     out.insert(0, "sku", p["sku"].to_numpy())
     return out
 
@@ -142,17 +169,26 @@ def matched_comparison(summaries: dict[str, dict], legacy_ref: str, legacy_famil
     head = summaries[qstats_family[0]]
     l_inv = interpolate_inventory(l_pts, head["fill_rate"])
     return {
-        "legacy_fill": ref["fill_rate"], "legacy_inventory": ref["average_inventory_value"],
+        "legacy_fill": ref["fill_rate"],
+        "legacy_inventory": ref["average_inventory_value"],
         "qstats_inventory_at_legacy_fill": q_inv,
         "inventory_saving_pct": 1 - q_inv / ref["average_inventory_value"] if np.isfinite(q_inv) else np.nan,
-        "qstats_fill": head["fill_rate"], "qstats_inventory": head["average_inventory_value"],
+        "qstats_fill": head["fill_rate"],
+        "qstats_inventory": head["average_inventory_value"],
         "legacy_inventory_at_qstats_fill": l_inv,
         "legacy_extra_inventory_pct": l_inv / head["average_inventory_value"] - 1 if np.isfinite(l_inv) else np.nan,
     }
 
 
-def bootstrap(per_variant: dict[str, pd.DataFrame], cfg: dict, legacy_ref: str, legacy_family: list[str],
-              qstats_family: list[str], n_boot: int = 1000, seed: int = 20261006) -> pd.DataFrame:
+def bootstrap(
+    per_variant: dict[str, pd.DataFrame],
+    cfg: dict,
+    legacy_ref: str,
+    legacy_family: list[str],
+    qstats_family: list[str],
+    n_boot: int = 1000,
+    seed: int = 20261006,
+) -> pd.DataFrame:
     """Paired bootstrap over SKUs: every resample uses the same SKUs in every variant."""
     rng = np.random.default_rng(seed)
     n = len(next(iter(per_variant.values())))
@@ -162,9 +198,14 @@ def bootstrap(per_variant: dict[str, pd.DataFrame], cfg: dict, legacy_ref: str, 
         sums = {k: summarise(v.iloc[idx], cfg) for k, v in per_variant.items() if k in set(legacy_family) | set(qstats_family)}
         m = matched_comparison(sums, legacy_ref, legacy_family, qstats_family)
         h, r = sums[qstats_family[0]], sums[legacy_ref]
-        rows.append({**m, "fill_diff": h["fill_rate"] - r["fill_rate"],
-                     "inventory_diff": h["average_inventory_value"] - r["average_inventory_value"],
-                     "lost_contribution_diff": h["lost_contribution"] - r["lost_contribution"]})
+        rows.append(
+            {
+                **m,
+                "fill_diff": h["fill_rate"] - r["fill_rate"],
+                "inventory_diff": h["average_inventory_value"] - r["average_inventory_value"],
+                "lost_contribution_diff": h["lost_contribution"] - r["lost_contribution"],
+            }
+        )
     return pd.DataFrame(rows)
 
 

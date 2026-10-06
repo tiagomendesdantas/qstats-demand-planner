@@ -100,8 +100,18 @@ class Repository:
 
     # ------------------------------------------------------------------ evaluation layer
     def eval_table(self, name: str) -> pd.DataFrame:
-        allowed = {"summary", "per_sku", "bootstrap", "calibration", "benchmark_scores", "benchmark_episodes",
-                   "benchmark_weekly", "world_weekly", "scenario_null", "scenario_optimistic_quotes"}
+        allowed = {
+            "summary",
+            "per_sku",
+            "bootstrap",
+            "calibration",
+            "benchmark_scores",
+            "benchmark_episodes",
+            "benchmark_weekly",
+            "world_weekly",
+            "scenario_null",
+            "scenario_optimistic_quotes",
+        }
         if name not in allowed:
             raise ValueError(name)
         return self._q(f"SELECT * FROM eval_{name}")
@@ -111,8 +121,9 @@ class Repository:
         return {r.key: json.loads(r.value) for r in df.itertuples()}
 
     # ------------------------------------------------------------------ planner decisions
-    def record_decision(self, rec_id: str, planner_action: str, quantity: int | None, comment: str,
-                        planner: str = "planner") -> dict:
+    def record_decision(
+        self, rec_id: str, planner_action: str, quantity: int | None, comment: str, planner: str = "planner"
+    ) -> dict:
         rec = self.recommendation(rec_id)
         if rec is None:
             raise KeyError(rec_id)
@@ -121,17 +132,24 @@ class Repository:
         if planner_action == "OVERRIDE" and (quantity is None or quantity < 0):
             raise ValueError("an override needs a non-negative quantity")
         row = {
-            "recommendation_id": rec_id, "sku": rec["sku"], "action": rec["action"],
-            "system_quantity": int(rec["recommended_quantity"]), "planner_action": planner_action,
-            "override_quantity": int(quantity) if planner_action == "OVERRIDE" else
-            (int(rec["recommended_quantity"]) if planner_action == "ACCEPT" else 0),
-            "comment": comment or "", "planner": planner, "timestamp": datetime.now().replace(microsecond=0),
+            "recommendation_id": rec_id,
+            "sku": rec["sku"],
+            "action": rec["action"],
+            "system_quantity": int(rec["recommended_quantity"]),
+            "planner_action": planner_action,
+            "override_quantity": int(quantity)
+            if planner_action == "OVERRIDE"
+            else (int(rec["recommended_quantity"]) if planner_action == "ACCEPT" else 0),
+            "comment": comment or "",
+            "planner": planner,
+            "timestamp": datetime.now().replace(microsecond=0),
         }
         status = {"ACCEPT": "ACCEPTED", "OVERRIDE": "OVERRIDDEN", "REJECT": "REJECTED"}[planner_action]
         with self.engine.begin() as conn:
             conn.execute(insert(tables.overrides).values(**row))
-            conn.execute(update(tables.recommendations).where(tables.recommendations.c.recommendation_id == rec_id)
-                         .values(status=status))
+            conn.execute(
+                update(tables.recommendations).where(tables.recommendations.c.recommendation_id == rec_id).values(status=status)
+            )
         return row
 
     def decisions(self) -> pd.DataFrame:

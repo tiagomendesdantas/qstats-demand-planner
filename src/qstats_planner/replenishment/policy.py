@@ -35,11 +35,11 @@ class PlanSettings:
     uncensor: bool = True
     seasonal: bool = True
     probabilistic: bool = True
-    service_level: float | None = None       # None: each product's own target
-    demand_multiplier: float = 1.0           # scenario: demand growth
-    lead_time_multiplier: float = 1.0        # scenario
-    lead_time_spread: float = 1.0            # scenario: supplier variability
-    safety_days: float = 30.0                # used when probabilistic is off
+    service_level: float | None = None  # None: each product's own target
+    demand_multiplier: float = 1.0  # scenario: demand growth
+    lead_time_multiplier: float = 1.0  # scenario
+    lead_time_spread: float = 1.0  # scenario: supplier variability
+    safety_days: float = 30.0  # used when probabilistic is off
 
 
 @dataclass
@@ -48,15 +48,15 @@ class PlanState:
     history: History
     recon: object
     forecast_state: ForecastState
-    weekly_fc: np.ndarray        # (H, n)
-    daily_fc: np.ndarray         # (D, n)
+    weekly_fc: np.ndarray  # (H, n)
+    daily_fc: np.ndarray  # (D, n)
     future_days: pd.DatetimeIndex
     lead_times: dict
     sku_lead_time: list
     ltd: LTDResult
     alpha: np.ndarray
-    position: np.ndarray         # network inventory position (planning-weighted)
-    target: np.ndarray           # order-up-to level
+    position: np.ndarray  # network inventory position (planning-weighted)
+    target: np.ndarray  # order-up-to level
     raw_requirement: np.ndarray
     order_qty: np.ndarray
     east_qty: np.ndarray
@@ -70,26 +70,34 @@ def build_history(view, recon, prior, settings: PlanSettings) -> History:
     sales_net = view.sales.sum(axis=2)
     if settings.uncensor:
         adj = recon.adjusted.sum(axis=2)
-        imp = np.where(recon.imputed, recon.adjusted - np.stack(
-            [view.sales[:, :, 0] + view.sales[:, :, 1], view.sales[:, :, 2]], axis=2), 0).sum(axis=2)
+        imp = np.where(
+            recon.imputed, recon.adjusted - np.stack([view.sales[:, :, 0] + view.sales[:, :, 1], view.sales[:, :, 2]], axis=2), 0
+        ).sum(axis=2)
     else:
         adj, imp = sales_net, np.zeros_like(sales_net)
-    Y, I, O = weekly(adj, t), weekly(imp, t), weekly(sales_net, t)
+    Y, imputed_w, observed_w = weekly(adj, t), weekly(imp, t), weekly(sales_net, t)
     W = Y.shape[0]
     exposure = view.trading[: W * 7].reshape(W, 7).sum(axis=1).astype(float)
     launch_week = np.where(view.launch_day >= 0, view.launch_day // 7, W + 1)
     event_week = np.zeros((W, view.n_sku), bool)
     ev = view.events()
     for e in ev.itertuples() if len(ev) else []:
-        event_week[e.start_day // 7: min(e.end_day, t) // 7 + 1, e.sku_idx] = True
+        event_week[e.start_day // 7 : min(e.end_day, t) // 7 + 1, e.sku_idx] = True
     valid = (exposure[:, None] > 0) & (np.arange(W)[:, None] >= launch_week[None, :]) & ~event_week
     pr = prior if settings.seasonal else prior.neutral()
     season = pr.weekly_from_daily(view.all_days, W)
-    return History(Y, I, O, valid, exposure, season, launch_week, pr.sku_group)
+    return History(Y, imputed_w, observed_w, valid, exposure, season, launch_week, pr.sku_group)
 
 
-def run_cycle(view, cfg: dict, prior, settings: PlanSettings, previous: ForecastState | None = None,
-              refit: bool = True, keep_backtest: bool = False) -> PlanState:
+def run_cycle(
+    view,
+    cfg: dict,
+    prior,
+    settings: PlanSettings,
+    previous: ForecastState | None = None,
+    refit: bool = True,
+    keep_backtest: bool = False,
+) -> PlanState:
     rc, fc, inv = cfg["reconstruction"], cfg["forecasting"], cfg["inventory"]
     prod = view.products
     n = view.n_sku
@@ -99,13 +107,17 @@ def run_cycle(view, cfg: dict, prior, settings: PlanSettings, previous: Forecast
     pr = prior if settings.seasonal else prior.neutral()
     season_days = pr.daily_factors(view.days)
     cd = channel_data(view, season_days)
-    recon = reconstruct(cd, rc["planner_method"] if settings.uncensor else "no_adjustment",
-                        view.days.dayofweek.to_numpy(), two_sided=True,
-                        window=rc["window_trading_days"], min_clean=rc["min_clean_days"],
-                        unknown_zero_run_p=rc["unknown_zero_run_probability"],
-                        gamma_min_shape=rc["gamma_min_shape"])
+    recon = reconstruct(
+        cd,
+        rc["planner_method"] if settings.uncensor else "no_adjustment",
+        view.days.dayofweek.to_numpy(),
+        two_sided=True,
+        window=rc["window_trading_days"],
+        min_clean=rc["min_clean_days"],
+        unknown_zero_run_p=rc["unknown_zero_run_probability"],
+        gamma_min_shape=rc["gamma_min_shape"],
+    )
     hist = build_history(view, recon, prior, settings)
-    W = hist.Y.shape[0]
 
     # 2. lead times
     quoted = prod["supplier_idx"].map(view.suppliers["quoted_lead_time_days"]).to_numpy(float)
@@ -156,8 +168,27 @@ def run_cycle(view, cfg: dict, prior, settings: PlanSettings, previous: Forecast
 
     # 6. Amazon FBA
     fba_share, fba = _fba_plan(view, cfg, recon, daily_fc, fs, alpha, settings, pref_east, level)
-    return PlanState(view.t, hist, recon, fs, weekly_fc, daily_fc, future_days, lts, sku_lt, ltd, alpha,
-                     position, target, raw, qty, east, west, fba, fba_share)
+    return PlanState(
+        view.t,
+        hist,
+        recon,
+        fs,
+        weekly_fc,
+        daily_fc,
+        future_days,
+        lts,
+        sku_lt,
+        ltd,
+        alpha,
+        position,
+        target,
+        raw,
+        qty,
+        east,
+        west,
+        fba,
+        fba_share,
+    )
 
 
 def _fba_plan(view, cfg, recon, daily_fc, fs, alpha, settings: PlanSettings, pref_east, level) -> tuple[np.ndarray, pd.DataFrame]:
@@ -166,8 +197,11 @@ def _fba_plan(view, cfg, recon, daily_fc, fs, alpha, settings: PlanSettings, pre
     n = view.n_sku
     R = view.review_period_days
     fba_on = prod["fba_enabled"].to_numpy(bool)
-    adj = recon.adjusted if settings.uncensor else np.stack(
-        [view.sales[:, :, 0] + view.sales[:, :, 1], view.sales[:, :, 2]], axis=2)
+    adj = (
+        recon.adjusted
+        if settings.uncensor
+        else np.stack([view.sales[:, :, 0] + view.sales[:, :, 1], view.sales[:, :, 2]], axis=2)
+    )
     recent = adj[-91:]
     tot = recent.sum(axis=(0, 2))
     share = np.where(tot > 0, recent[:, :, 1].sum(axis=0) / np.maximum(tot, 1e-9), cfg["business"]["fba_channel_share"] * 0.5)
@@ -185,8 +219,13 @@ def _fba_plan(view, cfg, recon, daily_fc, fs, alpha, settings: PlanSettings, pre
     transit = ltmod.LeadTimeDistribution("FBA", vals, counts / counts.sum(), len(obs), 0, float(np.median(times)))
 
     p = view.position
-    fba_pos = (p.available[:, FBA] + p.fba_transfer + p.fba_inbound + p.dc_committed.sum(axis=1)
-               + cfg["inventory"]["reserved_planning_weight"] * p.fba_reserved)
+    fba_pos = (
+        p.available[:, FBA]
+        + p.fba_transfer
+        + p.fba_inbound
+        + p.dc_committed.sum(axis=1)
+        + cfg["inventory"]["reserved_planning_weight"] * p.fba_reserved
+    )
     if settings.probabilistic:
         ltd = lead_time_demand(fba_daily, [transit] * n, R, fs.segments, fs.errors, alpha, level * share)
         target = ltd.target
@@ -195,8 +234,11 @@ def _fba_plan(view, cfg, recon, daily_fc, fs, alpha, settings: PlanSettings, pre
         repl = sim["transfer_pick_days"] + float(np.mean(sim["fba_transit_days"])) + R
         rate = fba_daily[:28].mean(axis=0)
         mean = rate * repl
-        target = np.where(p.on_hand[:, FBA] + p.fba_inbound < rate * (repl + lg["fba_trigger_extra_days"]),
-                          rate * (repl + lg["fba_cover_days"]), 0.0)
+        target = np.where(
+            p.on_hand[:, FBA] + p.fba_inbound < rate * (repl + lg["fba_trigger_extra_days"]),
+            rate * (repl + lg["fba_cover_days"]),
+            0.0,
+        )
         fba_pos = p.on_hand[:, FBA] + p.fba_inbound + p.dc_committed.sum(axis=1)
     send = np.where(fba_on & view.launched, np.maximum(target - fba_pos, 0), 0)
     send = round_up_to_pack(send, prod["case_pack"].to_numpy())
@@ -215,9 +257,17 @@ def _fba_plan(view, cfg, recon, daily_fc, fs, alpha, settings: PlanSettings, pre
         for src, q in ((first, q1), (1 - first, q2)):
             if q > 0:
                 rows.append({"sku_idx": int(i), "qty": int(q), "source": int(src)})
-    out = pd.DataFrame({"sku_idx": np.arange(n), "fba_enabled": fba_on, "fba_share": share,
-                        "fba_position": fba_pos, "fba_target": np.where(fba_on, target, 0),
-                        "fba_mean_demand": np.where(fba_on, mean, 0), "recommended": send})
+    out = pd.DataFrame(
+        {
+            "sku_idx": np.arange(n),
+            "fba_enabled": fba_on,
+            "fba_share": share,
+            "fba_position": fba_pos,
+            "fba_target": np.where(fba_on, target, 0),
+            "fba_mean_demand": np.where(fba_on, mean, 0),
+            "recommended": send,
+        }
+    )
     out.attrs["transfers"] = rows
     out.attrs["transit_p90"] = transit.quantile(0.9)
     return share, out

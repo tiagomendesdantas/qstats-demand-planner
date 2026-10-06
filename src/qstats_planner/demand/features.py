@@ -76,20 +76,22 @@ def sku_metrics(daily: pd.DataFrame, cfg: dict, start=None, end=None) -> pd.Data
         # end of a window is not read as growth or decline.
         off_peak = ~np.isin(pd.DatetimeIndex(w["week"]).month, [9, 10, 11, 12])
         adi, cv2, sb = syntetos_boylan(units, seg["adi_threshold"], seg["cv2_threshold"])
-        rows.append({
-            "sku": sku,
-            "total_units": units.sum(),
-            "history_weeks": len(units),
-            "mean_weekly_units": units.mean(),
-            "zero_week_ratio": float((units == 0).mean()),
-            "adi": adi,
-            "cv2": cv2,
-            "sb_class": sb,
-            "coefficient_of_variation": float(units.std() / units.mean()) if units.mean() > 0 else np.nan,
-            "trend_strength": trend_strength(rate[off_peak]),
-            "peak_ratio": peak_ratio(w["week"], rate),
-            "seasonal_keyword": any(k in str(desc.get(sku, "")) for k in keywords),
-        })
+        rows.append(
+            {
+                "sku": sku,
+                "total_units": units.sum(),
+                "history_weeks": len(units),
+                "mean_weekly_units": units.mean(),
+                "zero_week_ratio": float((units == 0).mean()),
+                "adi": adi,
+                "cv2": cv2,
+                "sb_class": sb,
+                "coefficient_of_variation": float(units.std() / units.mean()) if units.mean() > 0 else np.nan,
+                "trend_strength": trend_strength(rate[off_peak]),
+                "peak_ratio": peak_ratio(w["week"], rate),
+                "seasonal_keyword": any(k in str(desc.get(sku, "")) for k in keywords),
+            }
+        )
     out = pd.DataFrame(rows)
     daily_stats = d.groupby("sku").agg(
         sales_days=("units", lambda s: int((s > 0).sum())),

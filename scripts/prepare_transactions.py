@@ -78,8 +78,7 @@ def main() -> int:
     pd.DataFrame({"date": trading}).to_parquet(out_dir / "trading_days.parquet", index=False)
 
     manifest = {
-        "source": {"url": src["url"], "sha256": src["sha256"], "doi": "10.24432/C5CG6D",
-                   "licence": "CC BY 4.0"},
+        "source": {"url": src["url"], "sha256": src["sha256"], "doi": "10.24432/C5CG6D", "licence": "CC BY 4.0"},
         "adapter": adapter_report,
         "cleaning": report,
         "original_date_range": original_range,
@@ -93,8 +92,12 @@ def main() -> int:
         "sales_lines_hash": frame_hash(pd.read_parquet(pinned)),
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, default=str))
-    print(json.dumps({k: manifest[k] for k in ("cleaning", "shifted_date_range", "trading_days",
-                                               "skus_with_demand", "skus_disappeared")}, indent=2))
+    print(
+        json.dumps(
+            {k: manifest[k] for k in ("cleaning", "shifted_date_range", "trading_days", "skus_with_demand", "skus_disappeared")},
+            indent=2,
+        )
+    )
     print(f"done in {time.time() - t0:.0f}s")
     return 0
 

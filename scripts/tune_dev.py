@@ -59,11 +59,20 @@ def main() -> int:
     table = {}
     for two in (False, True):
         for m in R.METHODS:
-            rec = R.reconstruct(cd, m, env.days.dayofweek.to_numpy(), two_sided=two, window=rc["window_trading_days"],
-                                min_clean=rc["min_clean_days"], unknown_zero_run_p=rc["unknown_zero_run_probability"],
-                                gamma_min_shape=rc["gamma_min_shape"])
+            rec = R.reconstruct(
+                cd,
+                m,
+                env.days.dayofweek.to_numpy(),
+                two_sided=two,
+                window=rc["window_trading_days"],
+                min_clean=rc["min_clean_days"],
+                unknown_zero_run_p=rc["unknown_zero_run_probability"],
+                gamma_min_shape=rc["gamma_min_shape"],
+            )
             table[f"{'two' if two else 'one'}_sided/{m}"] = score(cd.sales, rec.adjusted, truth, cen, cd.active)
-    two_sided = {k.split("/")[1]: v["episode_mae"] for k, v in table.items() if k.startswith("two") and not k.endswith("no_adjustment")}
+    two_sided = {
+        k.split("/")[1]: v["episode_mae"] for k, v in table.items() if k.startswith("two") and not k.endswith("no_adjustment")
+    }
     out["reconstruction"] = {"scores": table, "chosen": min(two_sided, key=two_sided.get)}
 
     path = resolve(cfg["paths"]["simulation_dir"]) / "dev"

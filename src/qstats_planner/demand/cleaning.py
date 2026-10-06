@@ -27,8 +27,7 @@ from qstats_planner.domain.contract import LineType
 def drop_exact_duplicates(lines: pd.DataFrame) -> tuple[pd.DataFrame, int]:
     before = len(lines)
     out = lines.drop_duplicates(
-        subset=["order_id", "order_ts", "sku", "description", "quantity", "unit_price",
-                "customer_id", "country"]
+        subset=["order_id", "order_ts", "sku", "description", "quantity", "unit_price", "customer_id", "country"]
     )
     return out.reset_index(drop=True), before - len(out)
 
@@ -64,7 +63,9 @@ def match_cancellations(lines: pd.DataFrame) -> pd.DataFrame:
     matched = pd.merge_asof(
         rets[["ret_idx", "order_ts", "key"]],
         sales[["sale_idx", "order_ts", "key"]],
-        on="order_ts", by="key", direction="backward",
+        on="order_ts",
+        by="key",
+        direction="backward",
     ).dropna(subset=["sale_idx"])
     matched = matched.drop_duplicates(subset=["sale_idx"], keep="last")
     out.loc[matched["sale_idx"].astype(int).to_numpy(), "cancelled"] = True

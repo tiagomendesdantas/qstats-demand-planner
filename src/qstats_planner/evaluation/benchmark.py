@@ -15,8 +15,9 @@ import pandas as pd
 from qstats_planner.demand.reconstruction import _episodes
 
 
-def episode_table(sales: np.ndarray, adjusted: np.ndarray, baseline: np.ndarray, censored: np.ndarray,
-                  active: np.ndarray) -> pd.DataFrame:
+def episode_table(
+    sales: np.ndarray, adjusted: np.ndarray, baseline: np.ndarray, censored: np.ndarray, active: np.ndarray
+) -> pd.DataFrame:
     """One row per censored episode (SKU x channel): observed, reconstructed and true totals."""
     start, end = _episodes(censored, active)
     T, n, C = censored.shape
@@ -27,9 +28,21 @@ def episode_table(sales: np.ndarray, adjusted: np.ndarray, baseline: np.ndarray,
             col = ids[:, i, c]
             for s in np.unique(col[col >= 0]):
                 m = col == s
-                rows.append((i, c, int(s), int(end[s, i, c]), int(m.sum()),
-                             float(sales[m, i, c].sum()), float(adjusted[m, i, c].sum()), float(baseline[m, i, c].sum())))
-    return pd.DataFrame(rows, columns=["sku_idx", "channel", "start_day", "end_day", "days", "observed", "reconstructed", "baseline"])
+                rows.append(
+                    (
+                        i,
+                        c,
+                        int(s),
+                        int(end[s, i, c]),
+                        int(m.sum()),
+                        float(sales[m, i, c].sum()),
+                        float(adjusted[m, i, c].sum()),
+                        float(baseline[m, i, c].sum()),
+                    )
+                )
+    return pd.DataFrame(
+        rows, columns=["sku_idx", "channel", "start_day", "end_day", "days", "observed", "reconstructed", "baseline"]
+    )
 
 
 def weekly_error(adjusted: np.ndarray, baseline: np.ndarray, censored: np.ndarray) -> float:
@@ -40,8 +53,7 @@ def weekly_error(adjusted: np.ndarray, baseline: np.ndarray, censored: np.ndarra
     return float(np.abs(r(adjusted) - r(baseline))[wk_c].mean()) if wk_c.any() else np.nan
 
 
-def score(sales: np.ndarray, adjusted: np.ndarray, baseline: np.ndarray, censored: np.ndarray,
-          active: np.ndarray) -> dict:
+def score(sales: np.ndarray, adjusted: np.ndarray, baseline: np.ndarray, censored: np.ndarray, active: np.ndarray) -> dict:
     m = censored
     err = adjusted[m] - baseline[m]
     lost = float((baseline[m] - sales[m]).sum())

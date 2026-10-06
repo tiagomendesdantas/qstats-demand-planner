@@ -41,13 +41,24 @@ class ScenarioService:
             self.fs = pickle.load(fh)["forecast_state"]
         self.view = self.world.view(self.env.n_days - 1)
 
-    def run(self, service_level_target: float | None = None, demand_growth_pct: float = 0.0,
-            lead_time_multiplier: float = 1.0, supplier_variability: float = 1.0,
-            container_capacity_m3: float | None = None, probabilistic: bool = True,
-            safety_days: float = 30.0) -> ScenarioResult:
-        settings = PlanSettings(service_level=service_level_target, demand_multiplier=1 + demand_growth_pct / 100,
-                                lead_time_multiplier=lead_time_multiplier, lead_time_spread=supplier_variability,
-                                probabilistic=probabilistic, safety_days=safety_days)
+    def run(
+        self,
+        service_level_target: float | None = None,
+        demand_growth_pct: float = 0.0,
+        lead_time_multiplier: float = 1.0,
+        supplier_variability: float = 1.0,
+        container_capacity_m3: float | None = None,
+        probabilistic: bool = True,
+        safety_days: float = 30.0,
+    ) -> ScenarioResult:
+        settings = PlanSettings(
+            service_level=service_level_target,
+            demand_multiplier=1 + demand_growth_pct / 100,
+            lead_time_multiplier=lead_time_multiplier,
+            lead_time_spread=supplier_variability,
+            probabilistic=probabilistic,
+            safety_days=safety_days,
+        )
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
             st = run_cycle(self.view, self.cfg, self.prior, settings, previous=self.fs, refit=False)
@@ -81,7 +92,8 @@ class ScenarioService:
         margin_ok = prod["contribution_margin_pct"].to_numpy() >= self.cfg["business"]["minimum_margin_pct"]
         _, csum = plan_containers(buy, prod, sups, cover_after, weekly, margin_ok, v.discontinued(), cfg=self.cfg)
         summary = {
-            "purchase_lines": int((st.order_qty > 0).sum()), "purchase_units": int(st.order_qty.sum()),
+            "purchase_lines": int((st.order_qty > 0).sum()),
+            "purchase_units": int(st.order_qty.sum()),
             "purchase_value": purchase_value,
             "skus_at_risk_before_orders": int((v.launched & (so_before >= 0) & (so_before < risk)).sum()),
             "skus_at_risk_after_orders": int((v.launched & (so_after >= 0) & (so_after < risk)).sum()),
@@ -93,6 +105,13 @@ class ScenarioService:
             "containers": int(csum["containers"].sum()) if len(csum) else 0,
             "mean_container_utilisation": float(csum["utilisation"].mean()) if len(csum) else float("nan"),
         }
-        by_sku = pd.DataFrame({"sku": prod["sku"], "order_qty": st.order_qty, "order_up_to": st.target,
-                               "service_after": svc, "purchase_value": st.order_qty * cost})
+        by_sku = pd.DataFrame(
+            {
+                "sku": prod["sku"],
+                "order_qty": st.order_qty,
+                "order_up_to": st.target,
+                "service_after": svc,
+                "purchase_value": st.order_qty * cost,
+            }
+        )
         return ScenarioResult(summary, by_sku, csum)
