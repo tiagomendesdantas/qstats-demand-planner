@@ -1,5 +1,6 @@
 name: ci
-on: [push, pull_request]
+# a manual run (workflow_dispatch) makes gitleaks scan the whole history, not just the pushed commits
+on: [push, pull_request, workflow_dispatch]
 jobs:
   test:
     runs-on: ubuntu-latest
