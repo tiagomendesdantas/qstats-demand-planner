@@ -6,6 +6,7 @@ in the world the Legacy process ran: the plan is what QStats would tell this bus
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import pickle
 import sys
@@ -55,10 +56,11 @@ def main() -> int:
     sp = plan["sku_plan"].assign(sku=sku)
 
     # containers from the purchase lines (BUY and CRITICAL with a quantity)
-    buy = recs[recs["action"].isin(["BUY", "CRITICAL_STOCKOUT"]) & (recs["recommended_quantity"] > 0)]
+    buy = recs[(recs["action"] == "BUY") & (recs["recommended_quantity"] > 0)]
     buy = buy.drop_duplicates("sku_idx")[["sku_idx", "recommended_quantity"]]
     cont, cont_sum = plan_containers(buy, prod, view.suppliers, sp["weeks_of_cover_after"].to_numpy(),
-                                     sp["weekly_demand"].to_numpy(), ~sp["low_margin"].to_numpy(), sp["discontinued"].to_numpy())
+                                     sp["weekly_demand"].to_numpy(), ~sp["low_margin"].to_numpy(), sp["discontinued"].to_numpy(),
+                                     cfg=cfg)
 
     # forecasts with intervals (single-week errors for each week ahead)
     H = cfg["forecasting"]["forecast_horizon_weeks"]
@@ -68,9 +70,9 @@ def main() -> int:
     for h in range(H):
         for i in range(n):
             e = st.forecast_state.errors.errors(st.forecast_state.segments[i], 1)
-            q = np.quantile(np.maximum(st.weekly_fc[h, i] + level[i] * e, 0), [0.5, 0.8, 0.9, 0.95])
+            q = np.quantile(np.maximum(st.weekly_fc[h, i] + level[i] * e, 0), [0.1, 0.5, 0.8, 0.9, 0.95])
             fc_rows.append((sku[i], weeks[h], h + 1, st.weekly_fc[h, i], *q))
-    fcast = pd.DataFrame(fc_rows, columns=["sku", "week", "horizon", "expected", "p50", "p80", "p90", "p95"])
+    fcast = pd.DataFrame(fc_rows, columns=["sku", "week", "horizon", "expected", "p10", "p50", "p80", "p90", "p95"])
 
     # weekly history (planner side: observed, reconstructed, imputed; events and stockout days)
     W = st.history.Y.shape[0]
@@ -79,8 +81,13 @@ def main() -> int:
     cens = rec.imputed.reshape(-1, rec.imputed.shape[1], 2)[: W * 7].reshape(W, 7, n, 2).any(axis=3).sum(axis=1)
     status = rec.status[: W * 7].reshape(W, 7, n, 2)
     promo = ((status == 5) | (status == 6)).any(axis=(1, 3))
+    bt = st.forecast_state.backtest
+    champ = st.forecast_state.selection.champion
+    w1 = bt.week1_forecast[champ, :, np.arange(n)].T                  # made at w for week w+1
+    backtest_fc = np.vstack([np.full((1, n), np.nan), w1[:-1]])       # aligned to the week forecast
     hist = pd.DataFrame({
         "sku": np.tile(sku, W), "week": np.repeat(wk_days, n), "observed": st.history.observed.ravel(),
+        "backtest_forecast": backtest_fc.ravel(),
         "reconstructed": st.history.Y.ravel(), "imputed": st.history.imputed.ravel(),
         "stockout_days": cens.ravel(), "event_week": promo.ravel(), "valid": st.history.valid.ravel(),
     })
@@ -147,8 +154,10 @@ def main() -> int:
                      ("plan_kpis", pd.DataFrame([{"key": k, "value": json.dumps(v, default=float)} for k, v in kpis.items()]))):
         df.to_sql(name, db, if_exists="replace", index=False, chunksize=50000)
 
+    # the scenario simulator reuses the fitted champions and error tables, not the backtest itself
+    light = dataclasses.replace(st.forecast_state, backtest=None, extra={"selection_horizon": st.forecast_state.extra["selection_horizon"]})
     with open(sim / "plan_state.pkl", "wb") as fh:
-        pickle.dump({"forecast_state": st.forecast_state}, fh)
+        pickle.dump({"forecast_state": light, "kpis": kpis}, fh)
     counts = recs["action"].value_counts().to_dict()
     print(f"plan for {plan_date:%a %d %b %Y}: {len(recs)} recommendations {counts}")
     print(f"containers: {len(cont_sum)} suppliers; kpis: {json.dumps({k: kpis[k] for k in list(kpis)[:8]}, default=float)}")

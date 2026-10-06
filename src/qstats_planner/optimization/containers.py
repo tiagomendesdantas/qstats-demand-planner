@@ -2,9 +2,10 @@
 
 MVP solver: a transparent greedy heuristic.
     1. Place every recommended line (whole cases).
-    2. If the last container is under-filled, top it up with extra cases of that supplier's SKUs,
-       lowest weeks of cover first, skipping low-margin and discontinued SKUs and never taking a
-       SKU above `max_cover_weeks` of cover.
+    2. Only if the last container is below the supplier's minimum fill, top it up to `top_up_to`
+       with extra cases of that supplier's SKUs, lowest weeks of cover first, skipping low-margin
+       and discontinued SKUs and never taking a SKU above `max_cover_weeks` of cover. Filling a box
+       for its own sake converts working capital into stock, so the top-up stops at the minimum.
     3. Report utilisation, unused capacity and purchase value per container.
 
 `ContainerSolver` is the seam: an OR-Tools / PuLP / scipy.optimize model (maximise the value of
@@ -39,8 +40,8 @@ class ContainerSolver(Protocol):
 
 
 class GreedyContainerSolver:
-    def __init__(self, target_fill: float = 0.92, max_cover_weeks: float = 26.0):
-        self.target_fill = target_fill
+    def __init__(self, top_up_to: float = 0.65, max_cover_weeks: float = 16.0):
+        self.top_up_to = top_up_to
         self.max_cover_weeks = max_cover_weeks
 
     def solve(self, supplier_id: str, lines: list[ContainerLine], capacity_m3: float, min_fill: float) -> pd.DataFrame:
@@ -51,7 +52,8 @@ class GreedyContainerSolver:
         cube = lambda: sum((qty[ln.sku_idx] + top[ln.sku_idx]) / ln.case_pack * ln.cube_per_case for ln in lines)  # noqa: E731
         total = cube()
         n_cont = max(1, int(np.ceil(total / capacity_m3 - 1e-9)))
-        target = (n_cont - 1) * capacity_m3 + self.target_fill * capacity_m3
+        last_fill = (total - (n_cont - 1) * capacity_m3) / capacity_m3
+        target = (n_cont - 1) * capacity_m3 + self.top_up_to * capacity_m3 if last_fill < min_fill else total
         cover = {ln.sku_idx: ln.weeks_of_cover_after for ln in lines}
         cands = [ln for ln in lines if ln.eligible_top_up and ln.weekly_demand > 0]
         while cands and total < target:
@@ -85,9 +87,11 @@ class GreedyContainerSolver:
 
 def plan_containers(recs: pd.DataFrame, products: pd.DataFrame, suppliers: pd.DataFrame, cover_after: np.ndarray,
                     weekly_demand: np.ndarray, margin_ok: np.ndarray, discontinued: np.ndarray,
-                    solver: ContainerSolver | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+                    solver: ContainerSolver | None = None, cfg: dict | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
     """recs: one row per SKU with a purchase quantity (BUY lines)."""
-    solver = solver or GreedyContainerSolver()
+    if solver is None:
+        sc = (cfg or {}).get("suppliers", {})
+        solver = GreedyContainerSolver(sc.get("container_top_up_to", 0.65), sc.get("container_top_up_max_cover_weeks", 16))
     lines_by_sup: dict[str, list[ContainerLine]] = {}
     buy = recs.set_index("sku_idx")["recommended_quantity"] if len(recs) else pd.Series(dtype=float)
     for i, p in products.iterrows():

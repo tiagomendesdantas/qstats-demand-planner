@@ -35,3 +35,19 @@ def stockout_day(path: np.ndarray) -> np.ndarray:
     hit = path <= 0
     first = hit.argmax(axis=0)
     return np.where(hit.any(axis=0), first, -1)
+
+
+def expected_lost(stock_now: np.ndarray, daily_fc: np.ndarray, receipts: np.ndarray, days: np.ndarray) -> np.ndarray:
+    """Expected units of demand lost (not backordered) over the next `days` days per SKU, given
+    today's stock and the receipts already scheduled. Uses expected daily demand, so it is a
+    point estimate: lumpy demand makes the true figure vary around it."""
+    n = len(stock_now)
+    horizon = int(np.max(days)) if len(days) else 0
+    stock = np.asarray(stock_now, float).copy()
+    lost = np.zeros(n)
+    for d in range(horizon):
+        stock = stock + receipts[d]
+        short = np.maximum(daily_fc[d] - stock, 0)
+        lost += np.where(d < days, short, 0)
+        stock = np.maximum(stock - daily_fc[d], 0)
+    return lost

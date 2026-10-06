@@ -1,0 +1,66 @@
+# QStats Demand & Inventory Planner: "planner's workbook" theme.
+# Fonts are IBM Plex (SIL OFL), served from dashboard/static/fonts; the page makes no external
+# font requests.
+
+[server]
+enableStaticServing = true
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"
+showErrorDetails = "stacktrace"
+
+[theme]
+font = "IBM Plex Sans, system-ui, sans-serif"
+codeFont = "IBM Plex Mono, ui-monospace, monospace"
+headingFont = "IBM Plex Sans, system-ui, sans-serif"
+headingFontWeights = 600
+baseFontSize = 14
+baseRadius = "4px"
+buttonRadius = "4px"
+showWidgetBorder = true
+chartCategoricalColors = ["#1d7a55", "#2a78d6", "#c98500"]
+
+[[theme.fontFaces]]
+family = "IBM Plex Sans"
+url = "app/static/fonts/IBMPlexSans-400.woff2"
+weight = 400
+[[theme.fontFaces]]
+family = "IBM Plex Sans"
+url = "app/static/fonts/IBMPlexSans-500.woff2"
+weight = 500
+[[theme.fontFaces]]
+family = "IBM Plex Sans"
+url = "app/static/fonts/IBMPlexSans-600.woff2"
+weight = 600
+[[theme.fontFaces]]
+family = "IBM Plex Mono"
+url = "app/static/fonts/IBMPlexMono-400.woff2"
+weight = 400
+[[theme.fontFaces]]
+family = "IBM Plex Mono"
+url = "app/static/fonts/IBMPlexMono-500.woff2"
+weight = 500
+
+[theme.light]
+primaryColor = "#1d6b4a"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f4f5f2"
+textColor = "#1b1d1a"
+borderColor = "#dcdfd8"
+dataframeBorderColor = "#e3e6e0"
+dataframeHeaderBackgroundColor = "#f4f5f2"
+linkColor = "#1d6b4a"
+
+[theme.dark]
+primaryColor = "#4fb487"
+backgroundColor = "#151614"
+secondaryBackgroundColor = "#1e201d"
+textColor = "#e8eae5"
+borderColor = "#30332e"
+dataframeBorderColor = "#2c2f2a"
+dataframeHeaderBackgroundColor = "#1e201d"
+linkColor = "#6cc79c"

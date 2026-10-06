@@ -31,7 +31,8 @@ def portfolio_kpis(view, st, plan: dict, cfg: dict) -> dict:
     so = sp["stockout_day"].to_numpy()
     at_risk = launched & (so >= 0) & (so < risk_days)
     excess_units = np.maximum(on_hand - inv["excess_weeks_of_cover"] * weekly, 0)
-    buys = recs[recs["action"].isin(["BUY", "CRITICAL_STOCKOUT"]) & (recs["recommended_quantity"] > 0)].drop_duplicates("sku_idx")
+    buy_actions = ["BUY", "REVIEW_FORECAST", "LOW_MARGIN"]
+    buys = recs[recs["action"].isin(buy_actions) & (recs["recommended_quantity"] > 0)].drop_duplicates("sku_idx")
     w = np.where(launched, weekly, 0)
     bt = st.forecast_state.backtest
     wape = bias = np.nan
@@ -56,6 +57,7 @@ def portfolio_kpis(view, st, plan: dict, cfg: dict) -> dict:
         "inventory_value": value,
         "inventory_units": float(on_hand.sum()),
         "purchase_lines": int(len(buys)),
+        "purchase_lines_for_review": int((buys["action"] != "BUY").sum()),
         "purchase_value": float((buys["recommended_quantity"] * cost[buys["sku_idx"].to_numpy()]).sum()),
         "skus_at_stockout_risk": int(at_risk.sum()),
         "contribution_at_risk": float((sp["shortfall_before"].to_numpy() * cm)[launched].sum()),

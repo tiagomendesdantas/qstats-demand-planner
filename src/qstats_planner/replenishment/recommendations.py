@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 
 from qstats_planner.inventory.lead_time_demand import expected_shortfall, service_level
-from qstats_planner.inventory.projection import project, scheduled_receipts, stockout_day
+from qstats_planner.inventory.projection import expected_lost, project, scheduled_receipts, stockout_day
 from qstats_planner.replenishment.order_quantity import round_up_to_pack
 from qstats_planner.simulation.environment import EAST, FBA, WEST
 
@@ -74,6 +74,8 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
     path_new = project(stock_now, st.daily_fc, rec_new, horizon)
     so = stockout_day(path)
     so_new = stockout_day(path_new)
+    # demand expected to be lost before an order placed today could land, given the open pipeline
+    lost_before_new = expected_lost(stock_now, st.daily_fc, rec, np.minimum(lt_p50, horizon).astype(int))
     weekly13 = st.daily_fc[:91].sum(axis=0) / 13
     cover_now = np.where(weekly13 > 0, (stock_now + on_order) / np.maximum(weekly13, 1e-9), np.inf)
     cover_after = np.where(weekly13 > 0, (stock_now + on_order + st.order_qty) / np.maximum(weekly13, 1e-9), np.inf)
@@ -139,12 +141,21 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
         if qty > 0 or net_avail <= 0 or unavoidable:
             if net_avail <= 0 or (unavoidable and so[i] <= 14):
                 gap_days = max(int(lt_p50[i] - max(so[i], 0)), 0)
-                lost = st.daily_fc[max(so[i], 0): int(lt_p50[i]), i].sum()
+                lost = lost_before_new[i]
                 why = ("Out of stock in the network now." if net_avail <= 0 else
                        f"Projected to run out on {so_date:%b %d}, {gap_days} days before an order placed today could arrive.")
-                add(i, "CRITICAL_STOCKOUT", "CRITICAL", qty, "NETWORK", why,
-                    {**base_ev, "Expected units short before replenishment": lost},
-                    f"About {lost:,.0f} units of demand at risk before replenishment", lost * cm[i])
+                if i in next_po.index:
+                    npo = next_po.loc[i]
+                    why += (f" Next receipt: {npo['po_id']}, {int(npo['quantity']):,} units, due "
+                            f"{day(npo['eday'] - t - 1):%b %d}" + (" (already late)." if npo["status"] == "DELAYED" else "."))
+                else:
+                    why += " No purchase order is open."
+                if qty > 0:
+                    why += f" A purchase of {qty:,} units is recommended on its own line."
+                add(i, "CRITICAL_STOCKOUT", "CRITICAL", 0, "NETWORK", why,
+                    {**base_ev, "Expected units lost before a new order lands": lost},
+                    f"About {lost:,.0f} units of demand expected to be lost before a new order could land "
+                    "(open POs counted)", lost * cm[i])
                 acted = True
 
         if qty > 0 and not discontinued[i]:
@@ -177,7 +188,8 @@ def build(view, st, cfg: dict, created_at: pd.Timestamp) -> dict:
             po = next_po.loc[i]
             gap = int(po["eday"] - (t + 1) - so[i])
             if gap > rc["expedite_gap_days"]:
-                lost = st.daily_fc[so[i]: so[i] + gap, i].sum()
+                lost = float(expected_lost(stock_now[[i]], st.daily_fc[:, [i]], rec[:, [i]],
+                                           np.array([so[i] + gap]))[0])
                 add(i, "EXPEDITE", "HIGH", int(po["quantity"]), "NETWORK",
                     f"Projected out on {so_date:%b %d}; open PO {po['po_id']} is due {gap} days later.",
                     {**base_ev, "PO": po["po_id"], "PO status": po["status"],

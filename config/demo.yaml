@@ -103,6 +103,9 @@ suppliers:
     name: 40ft high cube
     capacity_m3: 68.0
   minimum_container_fill: 0.55
+  # Top up only a container below the minimum fill, to this level, with SKUs staying under the cover cap.
+  container_top_up_to: 0.65
+  container_top_up_max_cover_weeks: 16
 
 products:
   case_pack_candidates: [6, 8, 10, 12, 16, 18, 20, 24, 25, 32, 36, 48, 50, 72, 96]
