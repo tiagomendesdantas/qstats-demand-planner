@@ -1,0 +1,183 @@
+# QStats Demand & Inventory Planner: demo configuration.
+# Every business rule the planner or the simulation uses is set here, not in code.
+
+random_seed: 42
+
+paths:
+  raw_dir: data/raw
+  processed_dir: data/processed
+  simulation_dir: data/simulation
+  database_url: sqlite:///data/planner.sqlite
+
+source:
+  url: https://archive.ics.uci.edu/static/public/502/online+retail+ii.zip
+  sha256: 572e36277c2390fbfde10664750731e0a86f55e33470d91919085f0408e67bfb
+  zip_name: online_retail_ii.zip
+  xlsx_name: online_retail_II.xlsx
+
+calendar:
+  # Every date moves forward by exactly this many weeks, so weekdays and seasons are preserved.
+  # 731 weeks takes the last transaction (Fri 9 Dec 2011) to Fri 12 Dec 2025. Set 0 to disable.
+  shift_weeks: 731
+  # Future trading days are projected with the pattern seen in the data:
+  # Saturdays closed, and a year-end shutdown.
+  closed_weekdays: [5]          # Monday = 0
+  shutdown_start_month_day: [12, 23]
+  shutdown_end_month_day: [1, 3]
+
+cleaning:
+  merchandise_pattern: '^\d{5}[A-Z]{0,3}$'
+  # A line is a wholesale lot (kept in the record, left out of the demand the simulated business
+  # faces) when it exceeds BOTH thresholds below, computed per SKU.
+  bulk_line_multiple_of_sku_p95: 10.0
+  bulk_line_min_units: 1000
+  # A SKU is treated as discontinued after its last sale when it has not sold for this many weeks
+  # before the end of the data.
+  disappeared_after_weeks: 8
+
+population:
+  demo_sku_count: 200
+  dev_sku_count: 120
+  # Selection uses only the first `selection_weeks` of data, so the demo set is not chosen
+  # by how SKUs behaved later.
+  selection_weeks: 52
+  min_units_in_selection_window: 150
+  min_weeks_of_history_at_fork: 8
+  # Trend for profiling = relative change across Jan-Aug of the selection window (1.0 ~ a 3x change).
+  profile_trend_threshold: 1.0
+  new_product_share: 0.10
+  new_product_launch_weeks: [53, 80]
+
+segmentation:
+  adi_threshold: 1.32           # average demand interval (Syntetos-Boylan)
+  cv2_threshold: 0.49           # squared coefficient of variation of non-zero demand
+  new_product_weeks: 26
+  trend_threshold: 0.35         # |slope over the last 26 weeks| relative to mean
+  volatile_cv: 1.0
+  seasonal_keywords: [CHRISTMAS, XMAS, ADVENT, SANTA, REINDEER, SNOWFLAKE, TREE, STAR]
+
+business:
+  company: Fictional U.S. multi-channel importer (simulated)
+  currency: USD
+  locations:
+    - {id: EAST_DC, kind: DC, region_share: 0.6}
+    - {id: WEST_DC, kind: DC, region_share: 0.4}
+    - {id: AMAZON_FBA, kind: FBA}
+  fba_enabled_share: 0.45
+  fba_channel_share: 0.35       # share of an FBA-enabled SKU's customers who buy on Amazon
+  categories:
+    Seasonal Decor: [CHRISTMAS, XMAS, ADVENT, SANTA, REINDEER, SNOWFLAKE]
+    Candles & Lighting: [CANDLE, T-LIGHT, TLIGHT, LANTERN, LIGHT, HOLDER]
+    Kitchen & Dining: [MUG, CUP, PLATE, BOWL, JAR, TEA, CAKE, BAKING, LUNCH, BOTTLE, TIN, SPOON]
+    Bags & Storage: [BAG, BOX, BASKET, STORAGE, CASE, PURSE]
+    Paper & Gift Wrap: [CARD, WRAP, PAPER, RIBBON, TISSUE, NOTEBOOK, STICKER, PENCIL, PEN]
+    Home Decor: [SIGN, FRAME, CLOCK, HEART, MIRROR, CUSHION, DOORMAT, HOOK, VINTAGE, GARLAND]
+    Kids & Toys: [CHILDREN, CHILDS, TOY, DOLLY, SPACEBOY, GAME, PARTY, DINOSAUR, PLAYHOUSE]
+  default_category: Gifts & Accessories
+  usd_per_source_price: 1.27    # converts the source's prices to a USD reference value
+  retail_markup: [2.0, 2.6]     # selling price = reference value x markup (drawn per SKU)
+  landed_cost_ratio: [0.26, 0.44]
+  fulfillment_cost_pct: {DC: 0.10, FBA: 0.17}
+  fulfillment_cost_fixed: {DC: 0.45, FBA: 0.95}
+  advertising_cost_pct: [0.04, 0.14]
+  holding_cost_annual_pct: 0.24
+  minimum_margin_pct: 0.15
+
+suppliers:
+  count: 10
+  countries: [China, China, Vietnam, India, Bangladesh, Turkey, Mexico, Portugal, Indonesia, China]
+  lead_time_median_days: [38, 72]
+  lead_time_log_sd: [0.08, 0.22]          # per-PO noise
+  supplier_week_shock_log_sd: [0.04, 0.12] # shared by every PO a supplier ships in a week
+  delay_probability: [0.04, 0.12]
+  delay_mean_days: [8, 20]
+  cancel_probability: 0.01
+  production_share_of_lead_time: 0.4
+  history_pos_per_supplier: 14             # received before the simulation starts
+  disruptions_per_supplier: 0.4            # expected supplier-wide delay windows over the history
+  disruption_extra_days: [15, 30]
+  minimum_order_value_usd: [3000, 12000]
+  container:
+    name: 40ft high cube
+    capacity_m3: 68.0
+  minimum_container_fill: 0.55
+
+products:
+  case_pack_candidates: [6, 8, 10, 12, 16, 18, 20, 24, 25, 32, 36, 48, 50, 72, 96]
+  moq_weeks_of_demand: [3, 8]
+  cube_per_case_m3: [0.015, 0.12]
+  service_level_by_class: {A: 0.97, B: 0.95, C: 0.90}
+
+simulation:
+  warmup_weeks: 12          # ample stock, not scored; the history the first plan starts from
+  fork_week: 53             # QStats takes over from an identical state in World Q
+  review_period_days: 7
+  fba_transit_days: [5, 12]
+  fba_unavailable_share: [0.03, 0.12]   # FBA units in RESERVED / TRANSFER on a given day
+  fba_reserved_loss_share: 0.10          # share of RESERVED units that never return to AVAILABLE
+  transfer_pick_days: 2
+  dc_protection_days_for_fba: 7
+  unknown_availability_blocks_per_sku: 0.6
+  unknown_availability_block_days: [5, 15]
+  seeds: [42, 7, 2026]
+
+events:
+  promotion_sku_share: 0.12
+  promotions_per_sku: [1, 3]
+  promotion_weeks: [1, 3]
+  promotion_uplift_log_mean: 0.55
+  promotion_uplift_log_sd: 0.30
+  promotion_notice_weeks: 6
+  liquidation_sku_share: 0.04
+  liquidation_weeks: 4
+  liquidation_uplift: 1.5
+
+forecasting:
+  forecast_horizon_weeks: 26
+  planning_horizon_days: 180
+  min_origins_for_selection: 6
+  reselect_every_weeks: 4
+  parsimony_margin: 0.02
+  switch_margin: 0.05
+  sku_override_margin: 0.15
+  sku_override_min_blocks: 3
+  max_imputed_share_in_scoring_window: 0.10
+  ses_alphas: [0.1, 0.2, 0.3]
+  holt_params: [[0.2, 0.05, 0.9], [0.3, 0.1, 0.85]]
+  croston_alpha: 0.15
+  tsb_params: [0.15, 0.1]
+  ma_windows: [4, 8, 13]
+  seasonal_prior_shrink: 0.75
+  quantiles: [0.5, 0.8, 0.9, 0.95]
+  min_errors_for_sku_quantiles: 30
+
+reconstruction:
+  window_trading_days: 28
+  min_clean_days: 8
+  methods: [no_adjustment, pre_post_velocity, local_profile, model_expectation, censored_nb]
+  unknown_zero_run_probability: 0.02
+
+inventory:
+  target_service_level: 0.95
+  reserved_planning_weight: 0.5
+  lead_time_min_receipts: 8
+  lead_time_shrink_k: 8
+  excess_weeks_of_cover: 26
+  stockout_risk_weeks: 8
+
+legacy:
+  ses_alpha: 0.2            # replaced by the value tuned on the dev SKUs (see EVAL_PLAN)
+  safety_days: 30
+  fba_cover_days: 30
+  fba_trigger_extra_days: 14
+
+recommendations:
+  stockout_confidence_threshold: 0.70
+  expedite_gap_days: 7
+  excess_value_min_usd: 500
+  low_confidence_review: true
+
+scenario:
+  service_levels: [0.90, 0.95, 0.97, 0.99]
+  demand_growth_pct: [-20, 30]
+  lead_time_multipliers: [0.8, 1.0, 1.2, 1.5]

@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+
+# data: the raw file is downloaded, everything else is rebuilt by `make demo`
+data/raw/
+data/processed/
+data/simulation/
+data/*.sqlite
+data/*.db
+
+.env
+.env.*
+!.env.example
+*.pem
+.claude/
+.gstack/
+tasks/
+CLAUDE.md
